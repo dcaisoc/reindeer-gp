@@ -23,7 +23,7 @@ ALLOWED_DOMAIN = "cam.ac.uk"
 [[d1_databases]]
 binding = "DB"
 database_name = "reindeer-gp"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "0e13ae91-4e68-4d61-96a2-c20853fede34"
 migrations_dir = "server/migrations"
 
 # Optional: files (bots, replays) live in D1 by default. To move them to R2 later
@@ -59,7 +59,7 @@ DEV_LOGIN = "true"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "reindeer-gp-staging"
-database_id = "REPLACE_WITH_STAGING_D1_DATABASE_ID"
+database_id = "693ecc99-d21f-4169-8350-37805e79949e"
 migrations_dir = "server/migrations"
 
 [[env.staging.durable_objects.bindings]]
