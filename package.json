@@ -1,0 +1,31 @@
+{
+  "name": "reindeer-gp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reindeer Grand Prix: drive a sleigh, teach a neural network to drive like you, race the leaderboard.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/build-web.mjs --serve",
+    "build": "node scripts/build-web.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck && node scripts/check-banned-math.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:golden": "tsx engine/golden/run.ts",
+    "test:browser": "npm run build && tsx tests/browser/golden.browser.ts",
+    "golden:update": "tsx engine/golden/generate.ts",
+    "tracks": "tsx scripts/gen-tracks.ts",
+    "validate:tracks": "tsx scripts/validate-tracks.ts",
+    "balance": "tsx scripts/balance.ts",
+    "ci": "npm run lint && npm test && npm run test:golden && npm run validate:tracks && npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "playwright": "^1.63.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
