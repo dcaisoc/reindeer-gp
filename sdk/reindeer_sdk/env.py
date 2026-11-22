@@ -20,7 +20,7 @@ from .bot import BOT_TICKS_PER_ACTION
 from .config import DEFAULT_CONFIG, input_names
 from .quant import quantise
 from .sim import ReindeerGame, TrackGeometry
-from .tracks import load_track
+from .twist import course
 
 try:  # optional dependency
     import gymnasium as _gym
@@ -40,8 +40,9 @@ class SleighEnv(_Base):  # type: ignore[misc]
 
     def __init__(self, track: str | dict[str, Any] = "practice-1", inputs: Sequence[str] = DEFAULT_INPUTS,
                  cfg: dict[str, Any] | None = None) -> None:
-        self.track = load_track(track) if isinstance(track, str) else track
-        self.cfg = cfg or DEFAULT_CONFIG
+        c = course(track)
+        self.track = c.track
+        self.cfg = cfg or c.cfg
         allowed = input_names(self.cfg)
         for n in inputs:
             if n not in allowed:

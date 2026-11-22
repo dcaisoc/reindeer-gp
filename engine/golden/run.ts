@@ -16,10 +16,15 @@ const corpus = files.map((f) => ({ name: f, replay: JSON.parse(readFileSync(join
 const tracks = Object.fromEntries(
   ['practice-1', 'practice-2', 'practice-3'].map((id) => [id, JSON.parse(readFileSync(join(root, 'tracks', `${id}.json`), 'utf8'))]),
 );
-const report = checkCorpus(corpus, tracks);
+const twists = Object.fromEntries(
+  readdirSync(join(root, 'tracks', 'twists')).filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(readFileSync(join(root, 'tracks', 'twists', f), 'utf8')))
+    .map((w) => [w.id, w]),
+);
+const report = checkCorpus(corpus, tracks, twists);
 const botCases = readdirSync(join(here, 'bots')).filter((f) => f.endsWith('.json')).sort()
   .map((f) => ({ name: f, golden: JSON.parse(readFileSync(join(here, 'bots', f), 'utf8')) }));
-const bots = checkBots(botCases, tracks);
+const bots = checkBots(botCases, tracks, twists);
 for (const line of [...report.lines, ...bots.lines]) console.log(line);
 const total = corpus.length + botCases.length;
 const failed = report.failures + bots.failures;

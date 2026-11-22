@@ -13,6 +13,9 @@ import { baselinePolicy, tunedPolicy } from '../reindeer/autopilot.js';
 import { Recorder, runPolicy } from '../reindeer/run.js';
 import type { TrackDef } from '../reindeer/track.js';
 import { evaluateBot } from '../reindeer/bot-policy.js';
+import { twistConfig, twistRef, type TwistDef } from '../reindeer/twist.js';
+import type { EngineConfig } from '../reindeer/config.js';
+import { readdirSync } from 'node:fs';
 import { buildDataset } from '../../web/src/train/data.js';
 import { Trainer } from '../../web/src/train/mlp.js';
 import { keyboardLap } from '../../tests/helpers/keyboard-driver.js';
@@ -27,8 +30,9 @@ function fixed(r: Replay): Replay {
 }
 
 /** Record a fixed number of ticks from an action generator, human-style (60 Hz). */
-function scripted(track: TrackDef, ticks: number, gen: (tick: number) => [number, number], name: string): Replay {
-  const rec = new Recorder(track, 1, { kind: 'human', name });
+function scripted(track: TrackDef, ticks: number, gen: (tick: number) => [number, number], name: string, cfg?: EngineConfig, twist?: TwistDef): Replay {
+  const rec = new Recorder(track, 1, { kind: 'human', name }, cfg);
+  if (twist) rec.twist = twistRef(twist);
   for (let i = 0; i < ticks && !rec.game.isDone(); i++) rec.tick(gen(i));
   return rec.toReplay();
 }
@@ -58,6 +62,28 @@ for (const id of ['practice-1', 'practice-2', 'practice-3']) {
   ]);
 }
 
+// Weekly twists: different geometry and engine config (e.g. 3 rays at night).
+const twistDir = join(here, '..', '..', 'tracks', 'twists');
+const twists: TwistDef[] = readdirSync(twistDir).filter((f) => f.endsWith('.json')).sort()
+  .map((f) => JSON.parse(readFileSync(join(twistDir, f), 'utf8')));
+for (const w of twists) {
+  const cfg = twistConfig(w);
+  cases.push([`twist-${w.id}-baseline`, runPolicy(w.track, baselinePolicy, { kind: 'bot', name: 'baseline' }, { cfg, twist: twistRef(w) })]);
+  const rand = mulberry32(4321 + w.id.length);
+  let s = 0;
+  let th = 0;
+  cases.push([
+    `twist-${w.id}-random`,
+    scripted(w.track, 2400, (i) => {
+      if (i % 9 === 0) {
+        s = quantise(rand() * 2 - 1);
+        th = quantise(rand() * 1.6 - 0.4);
+      }
+      return [s, th];
+    }, 'random', cfg, w),
+  ]);
+}
+
 for (const [name, r] of cases) {
   writeFileSync(join(out, `${name}.json`), JSON.stringify(replayToJson(fixed(r))) + '\n');
   const res = r.header.result;
@@ -82,4 +108,14 @@ for (const [id, act] of [['practice-1', 'relu'], ['practice-3', 'tanh']] as cons
   writeFileSync(join(botsDir, `${name}.json`), JSON.stringify({ bot, track: id, hashes: rep.header.hashes, finalHash: rep.header.finalHash }) + '\n');
   const res = rep.header.result;
   console.log(`${name.padEnd(28)} ticks ${String(res.ticks).padStart(5)}  valid ${res.valid}  hash ${rep.header.finalHash}`);
+}
+
+// A golden bot on a twist: surfaces sensors on new ice, through the twist's config.
+{
+  const w = twists.find((t) => t.id === 'ice-hairpins')!;
+  const golden = JSON.parse(readFileSync(join(botsDir, 'bot-practice-3-tanh.json'), 'utf8'));
+  const rep = evaluateBot(w.track, golden.bot, {}, { cfg: twistConfig(w), twist: twistRef(w) });
+  writeFileSync(join(botsDir, 'bot-twist-ice-hairpins-tanh.json'), JSON.stringify({ bot: golden.bot, track: w.id, twist: w.id, hashes: rep.header.hashes, finalHash: rep.header.finalHash }) + '\n');
+  const res = rep.header.result;
+  console.log(`${'bot-twist-ice-hairpins-tanh'.padEnd(28)} ticks ${String(res.ticks).padStart(5)}  valid ${res.valid}  hash ${rep.header.finalHash}`);
 }

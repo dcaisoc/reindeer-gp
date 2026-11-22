@@ -194,13 +194,21 @@ def is_trainer_architecture(bot: dict[str, Any]) -> bool:
     return L[-1]["activation"] == "tanh"
 
 
-def evaluate_bot(track: dict[str, Any], bot: dict[str, Any], *, check: bool = True,
+def evaluate_bot(track: Any, bot: dict[str, Any], *, check: bool = True,
                  cfg: dict[str, Any] | None = None, geo: TrackGeometry | None = None) -> Replay:
-    """Race a bot for one lap, exactly as the server does. Returns the replay (result in .result)."""
+    """Race a bot for one lap, exactly as the server does. Returns the replay (result in .result).
+
+    `track` is a track id, a twist id, or a loaded track or twist (twists bring their own config).
+    """
+    from .twist import course
+
+    c = course(track)
+    cfg = cfg or c.cfg
     if check:
-        errors, _ = validate_bot(bot)
+        errors, _ = validate_bot(bot, allowed_inputs=input_names(cfg))
         if errors:
             raise InvalidBot(errors)
     cb = CompiledBot(bot)
     name = (bot.get("meta") or {}).get("name", "bot")
-    return run_policy(track, cb.policy(), {"kind": "bot", "name": name}, cfg=cfg, ticks_per_action=BOT_TICKS_PER_ACTION, geo=geo)
+    return run_policy(c.track, cb.policy(), {"kind": "bot", "name": name}, cfg=cfg, ticks_per_action=BOT_TICKS_PER_ACTION,
+                      geo=geo, twist=c.twist)

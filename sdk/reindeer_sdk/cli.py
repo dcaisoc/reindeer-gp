@@ -27,7 +27,8 @@ from .bot import InvalidBot, evaluate_bot, load_bot, validate_bot
 from .config import ENGINE_VERSION
 from .replay import encode_replay, load_replay, replay_from_json
 from .run import simulate_replay
-from .tracks import TRACK_IDS, list_tracks, load_track
+from .tracks import TRACK_IDS, list_tracks
+from .twist import bundled_twist_ids, course, course_of_replay, load_twist
 
 
 def _fmt(score: float | None) -> str:
@@ -43,9 +44,25 @@ def _load_bot_or_exit(path: str) -> dict[str, Any]:
         sys.exit(f"{path} is not valid JSON: {e}")
 
 
-def cmd_tracks(_: argparse.Namespace) -> int:
+def cmd_tracks(a: argparse.Namespace) -> int:
     for t in list_tracks():
-        print(f"{t['id']:<12} {'★' * t['difficulty']:<4} {t['name']}: {t['description']}")
+        print(f"{t['id']:<16} {'★' * t['difficulty']:<4} {t['name']}: {t['description']}")
+    live: dict[str, str] = {}
+    try:
+        for w in Client(a.url).twists():
+            live[w["id"]] = "live now" if w["live"] else "ended"
+    except Exception:  # offline is fine: show the bundled examples
+        pass
+    ids = sorted(set(bundled_twist_ids()) | set(live))
+    if ids:
+        print("\nTwists (use the id anywhere a track id goes, e.g. reindeer eval bot.json --track night-oval):")
+    for i in ids:
+        try:
+            w = load_twist(i)
+        except ValueError:
+            continue
+        status = live.get(i, "example")
+        print(f"{i:<16} {status:<9} {w['name']}: {w['description']}")
     return 0
 
 
@@ -64,19 +81,25 @@ def cmd_validate(a: argparse.Namespace) -> int:
 def cmd_eval(a: argparse.Namespace) -> int:
     bot = _load_bot_or_exit(a.bot)
     tracks = TRACK_IDS if a.track == "all" else [a.track]
+    try:
+        courses = [course(t) for t in tracks]
+    except ValueError as e:
+        print(f"✗ {e}")
+        return 1
     results = []
-    for t in tracks:
+    for t, c in zip(tracks, courses):
         t0 = time.time()
         try:
-            rep = evaluate_bot(load_track(t), bot)
+            rep = evaluate_bot(t if t.endswith(".json") else c.id, bot)
         except InvalidBot as e:
             print(f"✗ {e}")
             return 1
         r = rep.result
+        t = c.id
         results.append({"track": t, **r})
         if not a.json:
             status = _fmt(r["score"]) if r["valid"] else "did not finish"
-            print(f"{t:<12} {status:<16} lap {r['ticks'] / 60:6.2f} s  penalties {r['penalties']:>2}  ({time.time() - t0:.1f}s to simulate)")
+            print(f"{t:<16} {status:<16} lap {r['ticks'] / 60:6.2f} s  penalties {r['penalties']:>2}  ({time.time() - t0:.1f}s to simulate)")
         if a.save_replay:
             base = Path(a.save_replay)
             out = base if len(tracks) == 1 else base.with_name(f"{base.stem}-{t}{base.suffix or '.rgpr'}")
@@ -91,10 +114,11 @@ def cmd_eval(a: argparse.Namespace) -> int:
 def cmd_replay(a: argparse.Namespace) -> int:
     rep = load_replay(a.file)
     h = rep.header
-    out = simulate_replay(load_track(rep.track_id), rep)
+    c = course_of_replay(rep)
+    out = simulate_replay(c.track, rep, c.cfg)
     r = h["result"]
     who = (h.get("participants") or [{}])[0]
-    print(f"{rep.track_id}: {who.get('kind', '?')} {who.get('name', '')}".rstrip())
+    print(f"{c.name} ({c.id}{', twist' if c.twist else ''}): {who.get('kind', '?')} {who.get('name', '')}".rstrip())
     print(f"  result     {_fmt(r['score']) if r['valid'] else 'did not finish'} ({r['ticks']} ticks, {r['penalties']} penalties)")
     print(f"  engine     {h['engineVersion']} (this SDK: {ENGINE_VERSION})")
     print(f"  verified   {'yes: re-simulates identically' if out.matches else f'NO: diverges near tick {(out.first_mismatch + 1) * 60}'}")
@@ -167,10 +191,11 @@ def cmd_selftest(_: argparse.Namespace) -> int:
     for f in sorted(root.joinpath("corpus").iterdir(), key=lambda p: p.name):
         rep = replay_from_json(json.loads(f.read_text("utf-8")))
         total += 1
-        ok += simulate_replay(load_track(rep.track_id), rep).matches
+        c = course_of_replay(rep)
+        ok += simulate_replay(c.track, rep, c.cfg).matches
     for f in sorted(root.joinpath("bots").iterdir(), key=lambda p: p.name):
         g = json.loads(f.read_text("utf-8"))
-        rep = evaluate_bot(load_track(g["track"]), g["bot"], check=False)
+        rep = evaluate_bot(g.get("twist") or g["track"], g["bot"], check=False)
         total += 1
         ok += rep.header["hashes"] == g["hashes"] and rep.header["finalHash"] == g["finalHash"]
     print(f"{'✓' if ok == total else '✗'} {ok}/{total} golden traces match the official engine {ENGINE_VERSION}.")
@@ -192,13 +217,15 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="reindeer", description="Reindeer Grand Prix toolkit.")
     p.add_argument("--version", action="version", version=f"reindeer-sdk {__version__} (engine {ENGINE_VERSION})")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("tracks", help="list the tracks").set_defaults(fn=cmd_tracks)
+    tr = sub.add_parser("tracks", help="list the tracks and twists")
+    tr.add_argument("--url")
+    tr.set_defaults(fn=cmd_tracks)
     v = sub.add_parser("validate", help="check a bot file")
     v.add_argument("bot")
     v.set_defaults(fn=cmd_validate)
     e = sub.add_parser("eval", help="race a bot locally")
     e.add_argument("bot")
-    e.add_argument("--track", default="all", choices=["all", *TRACK_IDS])
+    e.add_argument("--track", default="all", help="a track or twist id, or a twist .json file (default: all public tracks)")
     e.add_argument("--save-replay", metavar="FILE.rgpr")
     e.add_argument("--json", action="store_true", help="machine-readable output")
     e.set_defaults(fn=cmd_eval)
@@ -210,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     lg.set_defaults(fn=cmd_login)
     s = sub.add_parser("submit", help="submit a bot to the leaderboard")
     s.add_argument("bot")
-    s.add_argument("--track", default="all", choices=["all", *TRACK_IDS])
+    s.add_argument("--track", default="all", help="a track or live twist id (default: every public track and live twist)")
     s.add_argument("--url")
     s.set_defaults(fn=cmd_submit)
     st = sub.add_parser("status", help="check a submission")

@@ -29,12 +29,13 @@ export function evaluateBot(
   track: TrackDef,
   bot: BotFile,
   participant: { name?: string; teamId?: string; botId?: string } = {},
-  opts: { cfg?: EngineConfig; geo?: TrackGeometry } = {},
+  opts: { cfg?: EngineConfig; geo?: TrackGeometry; twist?: { id: string; version: string } | null } = {},
 ): Replay {
   const compiled = compileBot(bot);
   return runPolicy(track, botPolicy(compiled), { kind: 'bot', name: participant.name ?? bot.meta.name, teamId: participant.teamId, botId: participant.botId }, {
     cfg: opts.cfg,
     geo: opts.geo,
+    twist: opts.twist,
     ticksPerAction: BOT_TICKS_PER_ACTION,
   });
 }

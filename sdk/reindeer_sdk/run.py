@@ -30,6 +30,7 @@ class Recorder:
         self._actions: list[int] = []
         self.hashes: list[str] = []
         self._held = (0, 0)
+        self.twist: dict[str, str] | None = None  # set for runs on a weekly twist
 
     @property
     def needs_action(self) -> bool:
@@ -53,7 +54,7 @@ class Recorder:
             "game": GAME_ID,
             "engineVersion": ENGINE_VERSION,
             "track": {"id": self.track["id"], "version": self.track["trackVersion"]},
-            "twist": None,
+            "twist": self.twist,
             "seed": seed,
             "ticksPerAction": self.ticks_per_action,
             "participants": [self.participant],
@@ -145,9 +146,10 @@ def extract_training_pairs(track: dict[str, Any], replay: Replay, decision_ticks
 
 def run_policy(track: dict[str, Any], policy: Policy, participant: dict[str, Any] | None = None,
                cfg: dict[str, Any] | None = None, ticks_per_action: int = 3,
-               geo: TrackGeometry | None = None) -> Replay:
+               geo: TrackGeometry | None = None, twist: dict[str, str] | None = None) -> Replay:
     """Run a policy for a full lap at the bot decision rate and return the replay."""
     rec = Recorder(track, ticks_per_action, participant or {"kind": "bot"}, cfg, geo)
+    rec.twist = twist
     act = (0, 0)
     while not rec.game.is_done():
         if rec.needs_action:

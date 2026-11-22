@@ -1,15 +1,19 @@
 /**
- * Generate tracks/<id>.json from tracks/src/defs.ts.
- * Usage: npm run tracks
+ * Generate tracks/<id>.json from tracks/src/defs.ts, and weekly twists
+ * tracks/twists/<id>.json from tracks/src/twists.ts.
+ * Usage: npm run tracks                     (writes into the repo)
+ *        npm run tracks -- --out <folder>   (twists only, e.g. a surprise you don't commit)
  *
  * This script may use any maths it likes: its OUTPUT is data, and the engines
  * only ever read that data.
  */
 
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TRACKS, type TrackSource } from '../tracks/src/defs.js';
+import { TWISTS, type TwistSource } from '../tracks/src/twists.js';
+import type { TwistDef } from '../engine/reindeer/twist.js';
 import type { Pt, TrackDef, Decoration } from '../engine/reindeer/track.js';
 import { mulberry32 } from '../engine/core/quant.js';
 
@@ -159,10 +163,53 @@ function build(src: TrackSource): TrackDef {
   };
 }
 
-for (const src of TRACKS) {
-  const t = build(src);
-  const file = join(root, 'tracks', `${t.id}.json`);
-  writeFileSync(file, JSON.stringify(t) + '\n');
-  const len = Math.round(t.centreline.length * SPACING);
-  console.log(`${t.id}: ${t.name}, ~${len} m, ${t.centreline.length} points, ${t.checkpoints.length} checkpoints`);
+const outIdx = process.argv.indexOf('--out');
+const privateOut = outIdx > 0 ? process.argv[outIdx + 1] : null;
+
+if (!privateOut) {
+  for (const src of TRACKS) {
+    const t = build(src);
+    const file = join(root, 'tracks', `${t.id}.json`);
+    writeFileSync(file, JSON.stringify(t) + '\n');
+    const len = Math.round(t.centreline.length * SPACING);
+    console.log(`${t.id}: ${t.name}, ~${len} m, ${t.centreline.length} points, ${t.checkpoints.length} checkpoints`);
+  }
+}
+
+/** A twist is its base track rebuilt with changes, plus engine-config overrides. */
+function buildTwist(w: TwistSource): TwistDef {
+  const base = TRACKS.find((t) => t.id === w.base);
+  if (!base) throw new Error(`${w.id}: unknown base track ${w.base}`);
+  const control = w.reverse ? [base.control[0], ...base.control.slice(1).reverse()] : base.control;
+  const patches = w.patches ?? (w.reverse ? base.patches.map((p) => ({ type: p.type, from: 1 - p.to, to: 1 - p.from })) : base.patches);
+  const track = build({
+    ...base,
+    id: w.id,
+    trackVersion: w.twistVersion,
+    name: w.name,
+    description: w.description,
+    difficulty: w.difficulty ?? base.difficulty,
+    width: w.width ?? base.width,
+    control,
+    patches,
+  });
+  return {
+    format: 'rgp-twist',
+    version: 1,
+    id: w.id,
+    twistVersion: w.twistVersion,
+    name: w.name,
+    description: w.description,
+    baseTrack: w.base,
+    track,
+    config: w.config,
+  };
+}
+
+const twistDir = privateOut ?? join(root, 'tracks', 'twists');
+mkdirSync(twistDir, { recursive: true });
+for (const w of TWISTS) {
+  const t = buildTwist(w);
+  writeFileSync(join(twistDir, `${t.id}.json`), JSON.stringify(t) + '\n');
+  console.log(`twist ${t.id}: ${t.name} (base ${t.baseTrack}${w.reverse ? ', reversed' : ''}${Object.keys(t.config).length ? `, config ${JSON.stringify(t.config)}` : ''})`);
 }

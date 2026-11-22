@@ -1,6 +1,6 @@
 """Many sleighs at once: a batched version of SleighEnv for faster training loops.
 
-    env = VecSleighEnv(["practice-1", "practice-2"] * 4)       # 8 sleighs
+    env = VecSleighEnv(["practice-1", "night-oval"] * 4)       # 8 sleighs (tracks or twists)
     obs = env.reset()                                          # shape (8, n_inputs)
     obs, rewards, dones, infos = env.step(actions)             # actions shape (8, 2)
 
@@ -16,9 +16,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from .config import DEFAULT_CONFIG
 from .env import DEFAULT_INPUTS, SleighEnv
-from .tracks import load_track
 
 
 class VecSleighEnv:
@@ -26,19 +24,11 @@ class VecSleighEnv:
                  cfg: dict[str, Any] | None = None) -> None:
         if not tracks:
             raise ValueError("Give at least one track.")
-        cache: dict[str, dict[str, Any]] = {}
-        loaded = []
-        for t in tracks:
-            if isinstance(t, str):
-                cache.setdefault(t, load_track(t))
-                loaded.append(cache[t])
-            else:
-                loaded.append(t)
-        self.envs = [SleighEnv(t, inputs, cfg or DEFAULT_CONFIG) for t in loaded]
-        # Share geometry between sleighs on the same track (it is read-only).
-        geos: dict[int, Any] = {}
+        self.envs = [SleighEnv(t, inputs, cfg) for t in tracks]
+        # Share wall geometry between sleighs on the same track (it is read-only).
+        geos: dict[str, Any] = {}
         for e in self.envs:
-            e.geo = geos.setdefault(id(e.track), e.geo)
+            e.geo = geos.setdefault(e.track["id"], e.geo)
         self.num_envs = len(self.envs)
         self.inputs = list(inputs)
 

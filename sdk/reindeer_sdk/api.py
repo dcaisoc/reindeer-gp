@@ -107,5 +107,13 @@ class Client:
             time.sleep(delay)
             delay = min(3.0, delay * 1.5)
 
+    def twists(self) -> list[dict[str, Any]]:
+        """Twists that are live now or have ended (each with its schedule), without track data."""
+        return self._request("GET", "/api/v1/twists")["twists"]
+
+    def twist(self, twist_id: str) -> dict[str, Any]:
+        """The full twist file (track and config) of a live or past twist."""
+        return self._request("GET", f"/api/v1/twists/{twist_id}")["twist"]
+
     def board(self, track: str, kind: str = "bots") -> dict[str, Any]:
         return self._request("GET", f"/boards/s1/{track}/base/{kind}")

@@ -9,7 +9,7 @@ import numpy as np
 
 from .replay import Replay, load_replay
 from .run import extract_training_pairs
-from .tracks import load_track
+from .twist import course_of_replay
 
 
 def load_laps(*paths: str | Path) -> list[Replay]:
@@ -40,14 +40,16 @@ def laps_to_arrays(laps: Iterable[Replay], inputs: Sequence[str], *, mirror: boo
     With mirror=True every moment is also added flipped left-right (needs symmetric inputs).
     """
     inputs = list(inputs)
-    do_mirror = mirror and can_mirror(inputs)
-    if mirror and not do_mirror:
-        raise ValueError("Mirroring needs matching left and right sensors (e.g. ray0 and ray6).")
-    idx = [inputs.index(mirror_name(n)) for n in inputs]
     xs: list[list[float]] = []
     ys: list[tuple[float, float]] = []
     for lap in laps:
-        obs, acts = extract_training_pairs(load_track(lap.track_id), lap, decision_ticks)
+        c = course_of_replay(lap)
+        rays = len(c.cfg["rayAnglesDeg"])
+        do_mirror = mirror and can_mirror(inputs, rays)
+        if mirror and not do_mirror:
+            raise ValueError(f"Mirroring needs matching left and right sensors (e.g. ray0 and ray{rays - 1}).")
+        idx = [inputs.index(mirror_name(n, rays)) for n in inputs] if do_mirror else []
+        obs, acts = extract_training_pairs(c.track, lap, decision_ticks, c.cfg)
         for o, a in zip(obs, acts):
             row = o.to_inputs(inputs)
             xs.append(row)

@@ -12,7 +12,7 @@ from typing import Any
 
 from .replay import Replay
 from .run import simulate_replay
-from .tracks import load_track
+from .twist import course_of_replay
 
 SURFACE_COLOURS = {"ice": "#bfe3f5", "rough": "#d9c7a6", "snow": "#ffffff"}
 
@@ -26,8 +26,9 @@ def render_replay(replay: Replay, path: str | Path | None = None, *, track: dict
     except ImportError as e:  # pragma: no cover
         raise ImportError("render_replay needs matplotlib: pip install matplotlib") from e
 
-    track = track or load_track(replay.track_id)
-    out = simulate_replay(track, replay, collect_frames=True)
+    c = course_of_replay(replay)
+    track = track or c.track
+    out = simulate_replay(track, replay, c.cfg, collect_frames=True)
     frames = out.frames or []
 
     own_fig = ax is None
