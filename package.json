@@ -25,7 +25,8 @@
     "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry",
     "dev:pages": "node scripts/build-web.mjs --serve",
     "sdk:sync": "node scripts/sync-sdk-data.mjs",
-    "test:sdk": "cd sdk && python3 -m pytest -q"
+    "test:sdk": "cd sdk && python3 -m pytest -q",
+    "digest": "node scripts/digest.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

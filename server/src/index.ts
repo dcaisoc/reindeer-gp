@@ -13,6 +13,8 @@ import * as subs from './submissions.js';
 import * as teams from './teams.js';
 import * as tokens from './tokens.js';
 import * as twists from './twists.js';
+import { digest } from './digest.js';
+import { standings } from './standings.js';
 import { processQueue } from './evaluate.js';
 import { kickEvaluator } from './submissions.js';
 
@@ -51,6 +53,8 @@ function routes(env: Env, ctx?: Ctx): Router {
     .on('GET', '/api/v1/twists', () => twists.listTwists(env))
     .on('GET', '/api/v1/twists/:id', (req, p) => twists.getTwist(env, req, p.id))
     .on('GET', '/api/v1/boards', () => listBoards(env))
+    .on('GET', '/api/v1/standings', () => standings(env))
+    .on('GET', '/api/v1/digest.md', (req) => digest(env, req))
     .on('GET', '/api/v1/boards/*', (req, p) => getBoard(env, req, p['*'], ctx))
     .on('GET', '/api/v1/replays/:id', (req, p) => replays.replayMeta(env, req, p.id))
     .on('PATCH', '/api/v1/replays/:id', (req, p) => replays.setVisibility(env, req, p.id))

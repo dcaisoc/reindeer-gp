@@ -13,7 +13,8 @@ import { simulateReplay } from '../../engine/reindeer/run.js';
 import { getSetting } from './audit.js';
 import { rebuildBoard } from './boards.js';
 import type { Env } from './env.js';
-import { ensureBaselines, processDryRun } from './heavy.js';
+import { award } from './badges.js';
+import { baselineFor, ensureBaselines, processDryRun } from './heavy.js';
 import { geometry, type Course } from './tracks.js';
 import { courseFor } from './twists.js';
 import { newId, nowIso } from './util.js';
@@ -105,6 +106,8 @@ async function runBot(env: Env, job: Job): Promise<void> {
     finalHash: replay.header.finalHash,
     trackVersion: t.trackVersion,
     twistId: c.twist?.id ?? null,
+    course: c,
+    botInputs: file.inputs.length,
     valid: r.valid,
     score: r.score,
     ticks: r.ticks,
@@ -138,6 +141,10 @@ async function runHuman(env: Env, job: Job): Promise<void> {
     .run();
   if (job.kind === 'verify') {
     await env.DB.prepare("UPDATE submissions SET status = 'done', finished_at = ? WHERE id = ?").bind(nowIso(), job.id).run();
+    await award(env, {
+      teamId: job.team_id, kind: 'human', valid: res.valid, score: res.valid ? res.score : null, collisions: g.collisions, replayId: run.id,
+      onTwist: !!c.twist, botInputs: null, baselineScore: null, previousLeader: null, leadsNow: false,
+    });
     return;
   }
   await record(env, job, {
@@ -148,6 +155,8 @@ async function runHuman(env: Env, job: Job): Promise<void> {
     finalHash: out.finalHash,
     trackVersion: t.trackVersion,
     twistId: c.twist?.id ?? null,
+    course: c,
+    botInputs: null,
     valid: res.valid,
     score: res.valid ? res.score : null,
     ticks: g.tick,
@@ -165,6 +174,8 @@ interface Outcome {
   finalHash: string;
   trackVersion: string;
   twistId: string | null;
+  course: Course;
+  botInputs: number | null;
   valid: boolean;
   score: number | null;
   ticks: number;
@@ -189,18 +200,34 @@ async function record(env: Env, job: Job, o: Outcome): Promise<void> {
   await env.DB.batch(stmts);
 
   const frozen = (await getSetting(env, 'boards_frozen', 'false')) === 'true';
-  if (!o.valid || !job.board_key || frozen) return;
-  const cur = await env.DB.prepare('SELECT score FROM leaderboard_entries WHERE board_key = ? AND team_id = ?').bind(job.board_key, job.team_id).first<{ score: number }>();
-  // Strictly better only: on a tie, the earlier submission keeps its place.
-  if (cur && !(o.score! < cur.score)) return;
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO leaderboard_entries (board_key, team_id, evaluation_id, replay_id, score, ticks, penalties, beginner, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (board_key, team_id) DO UPDATE SET evaluation_id = excluded.evaluation_id, replay_id = excluded.replay_id,
-         score = excluded.score, ticks = excluded.ticks, penalties = excluded.penalties, beginner = excluded.beginner, submitted_at = excluded.submitted_at`,
-    ).bind(job.board_key, job.team_id, evalId, o.replayId, o.score, o.ticks, o.penalties, o.beginner, job.created_at),
-    env.DB.prepare('UPDATE replays SET keep = 1 WHERE id = ?').bind(o.replayId),
-  ]);
-  await rebuildBoard(env, job.board_key);
+  const leaderOf = async (key: string) =>
+    (await env.DB.prepare(
+      'SELECT e.team_id FROM leaderboard_entries e JOIN teams t ON t.id = e.team_id WHERE e.board_key = ? AND e.hidden = 0 AND t.hidden = 0 ORDER BY e.score, e.submitted_at LIMIT 1',
+    ).bind(key).first<{ team_id: string }>())?.team_id ?? null;
+  let previousLeader: string | null = null;
+  let leadsNow = false;
+  if (o.valid && job.board_key && !frozen) {
+    previousLeader = await leaderOf(job.board_key);
+    const cur = await env.DB.prepare('SELECT score FROM leaderboard_entries WHERE board_key = ? AND team_id = ?').bind(job.board_key, job.team_id).first<{ score: number }>();
+    // Strictly better only: on a tie, the earlier submission keeps its place.
+    if (!cur || o.score! < cur.score) {
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO leaderboard_entries (board_key, team_id, evaluation_id, replay_id, score, ticks, penalties, beginner, submitted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (board_key, team_id) DO UPDATE SET evaluation_id = excluded.evaluation_id, replay_id = excluded.replay_id,
+             score = excluded.score, ticks = excluded.ticks, penalties = excluded.penalties, beginner = excluded.beginner, submitted_at = excluded.submitted_at`,
+        ).bind(job.board_key, job.team_id, evalId, o.replayId, o.score, o.ticks, o.penalties, o.beginner, job.created_at),
+        env.DB.prepare('UPDATE replays SET keep = 1 WHERE id = ?').bind(o.replayId),
+      ]);
+      const snap = await rebuildBoard(env, job.board_key);
+      leadsNow = snap.entries[0]?.teamId === job.team_id;
+    }
+  }
+  // Badges count every valid result, on the board or not (but a frozen board can't crown a new leader).
+  const baseline = o.kind === 'bot' && o.valid ? await baselineFor(env, o.course) : null;
+  await award(env, {
+    teamId: job.team_id, kind: o.kind, valid: o.valid, score: o.score, collisions: o.collisions, replayId: o.replayId, onTwist: !!o.course.twist,
+    botInputs: o.botInputs, baselineScore: baseline?.valid ? baseline.score : null, previousLeader: o.kind === 'bot' ? previousLeader : null, leadsNow,
+  });
 }

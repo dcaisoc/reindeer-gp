@@ -1,6 +1,7 @@
 /** Teams of 1-4 people, joined with a short code. */
 
 import { requireTeam, requireUser } from './auth.js';
+import { BADGES, teamBadges } from './badges.js';
 import type { Env } from './env.js';
 import { HttpError, bad, json, notFound, readJson } from './http.js';
 import { COLLEGES, LEVELS, checkName, joinCode, type Level } from './names.js';
@@ -45,6 +46,7 @@ async function teamView(env: Env, team: TeamRow, includePrivate: boolean) {
     level: team.level,
     levelLocked: !!team.level_locked_at,
     members: members.results.map((m) => ({ id: m.id, displayName: m.display_name, role: m.role })),
+    badges: await teamBadges(env, team.id),
     ...(includePrivate ? { joinCode: team.join_code } : {}),
   };
 }
@@ -137,5 +139,5 @@ export async function getTeam(env: Env, _req: Request, id: string): Promise<Resp
 
 /** GET /api/v1/meta — colleges and levels for forms. */
 export function meta(): Response {
-  return json({ colleges: COLLEGES, levels: LEVELS }, 200, { 'cache-control': 'public, max-age=3600' });
+  return json({ colleges: COLLEGES, levels: LEVELS, badges: BADGES }, 200, { 'cache-control': 'public, max-age=3600' });
 }
