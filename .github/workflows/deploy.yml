@@ -57,14 +57,24 @@ jobs:
       - name: Deploy Worker
         id: deploy
         if: env.CF_TOKEN != ''
-        run: npx wrangler deploy $ENV_FLAG | tee deploy.log
+        run: |
+          # pipefail: without it, tee hides a failed deploy and the smoke test gets blamed.
+          set -o pipefail
+          npx wrangler deploy $ENV_FLAG 2>&1 | tee deploy.log
       - name: Smoke test
         if: env.CF_TOKEN != ''
         run: |
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$url" ]; then
+            echo "::error::Wrangler did not print a workers.dev URL. Is workers.dev enabled for this Worker? See deploy.log above."
+            exit 1
+          fi
           echo "Deployed to $url"
-          curl -fsS "$url/api/v1/health"
-          curl -fsS -o /dev/null "$url/"
+          # A Worker's first deploy switches on its workers.dev address, which can
+          # answer 404 for a minute or two while Cloudflare spreads it. Wait up to ~3 min.
+          curl -fsS --retry 18 --retry-delay 10 --retry-all-errors "$url/api/v1/health"
+          echo
+          curl -fsS --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null "$url/"
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Comment on the PR
         if: env.CF_TOKEN != '' && github.event_name == 'pull_request'

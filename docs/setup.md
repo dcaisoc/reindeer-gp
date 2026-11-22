@@ -27,7 +27,16 @@ Claude cannot change repository settings, so do these in the browser:
    Each `d1 create` prints a `database_id`. Paste them into `wrangler.toml` in place of `REPLACE_WITH_D1_DATABASE_ID` and `REPLACE_WITH_STAGING_D1_DATABASE_ID`, and commit that change through a pull request.
 3. Note your `workers.dev` subdomain: Workers & Pages → Overview, on the right. Your sites will be
    `https://reindeer-gp.<subdomain>.workers.dev` (production) and `https://reindeer-gp-staging.<subdomain>.workers.dev` (staging).
-4. Create an API token for GitHub Actions: My Profile → API Tokens → Create Token → template *Edit Cloudflare Workers*, and add the permission *Account → D1 → Edit*. Copy it.
+4. Create an API token for GitHub Actions: My Profile → API Tokens → Create Token → *Create Custom Token*, with these **Account** permissions (all on your account):
+
+   | Permission | Level | Needed for |
+   | --- | --- | --- |
+   | Workers Scripts | Edit | deploying the Worker, its static files and the Evaluator |
+   | D1 | Edit | database migrations |
+   | Account Settings | Read | finding your workers.dev subdomain |
+   | Workers Tail | Read | (optional) live logs |
+
+   If you already made a token and deploys fail with *No access to the specified service*, edit that token and add **Workers Scripts: Edit**. The token value doesn't change, so the GitHub secret stays as it is.
 5. In GitHub: Settings → Secrets and variables → Actions → New repository secret:
    - `CLOUDFLARE_API_TOKEN`: the token from step 4
    - `CLOUDFLARE_ACCOUNT_ID`: shown on the Workers & Pages overview page
