@@ -74,7 +74,7 @@ export function adminScreen(): Screen {
       return h('p', {}, h('label', { for: `set-${key}` }, `${label} `), inp, ' ',
         h('button', { class: 'btn small', onclick: () => act(() => api.post('/admin/settings', { key, value: inp.value }), 'Limit saved.') }, 'Save'));
     };
-    const annText = h('textarea', { id: 'ann', rows: '2', maxlength: '500', placeholder: 'Shown at the top of every page' });
+    const annText = h('textarea', { id: 'ann', 'aria-label': 'Announcement text', rows: '2', maxlength: '500', placeholder: 'Shown at the top of every page' });
     const boards = (await api.get<{ boards: { key: string; trackName: string; kind: string }[] }>('/boards')).boards;
     const boardSel = h('select', { id: 'board-sel' }, boards.map((b) => h('option', { value: b.key }, `${b.trackName} ${b.kind}`)));
     const twists = (await api.get<{ twists: TwistAdmin[] }>('/admin/twists')).twists;

@@ -17,6 +17,7 @@ import { ensureCourse, ensureCourseForReplay, geometry, sectorTimes } from '../t
 import { download, fmtDate, fmtDelta, fmtTime, h, toast, type Screen } from '../ui.js';
 import { api } from '../api.js';
 import { exportGif, exportVideo, videoMime } from '../clip.js';
+import { reducedMotion } from '../prefs.js';
 
 const GHOST_COLOURS = ['#2b6cb0', '#6b46c1', '#2f855a'];
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
@@ -129,7 +130,7 @@ async function openFile(file: File): Promise<void> {
 }
 
 function fileButton(): HTMLElement {
-  const input = h('input', { type: 'file', accept: '.rgpr', hidden: true, onchange: (e: Event) => {
+  const input = h('input', { type: 'file', accept: '.rgpr', hidden: true, 'aria-label': 'Replay file to open', onchange: (e: Event) => {
     const f = (e.target as HTMLInputElement).files?.[0];
     if (f) openFile(f);
   } });
@@ -156,7 +157,8 @@ function viewer(main: Loaded): Screen {
   const ghosts: { lap: LapRecord; sim: Sim; colour: string }[] = [];
 
   let tick = 0;
-  let playing = true;
+  // With reduced motion, replays wait for Play.
+  let playing = !reducedMotion();
   let speed = 1;
   let showRays = true;
   let showTrace = true;

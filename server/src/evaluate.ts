@@ -152,6 +152,7 @@ async function runHuman(env: Env, job: Job): Promise<void> {
     r2Key: run.r2_key,
     kind: 'human',
     title: `${run.team_name} driving ${c.name}`,
+    assisted: (replay.header.participants[0]?.assist?.length ?? 0) > 0 ? 1 : 0,
     finalHash: out.finalHash,
     trackVersion: t.trackVersion,
     twistId: c.twist?.id ?? null,
@@ -176,6 +177,7 @@ interface Outcome {
   twistId: string | null;
   course: Course;
   botInputs: number | null;
+  assisted?: number;
   valid: boolean;
   score: number | null;
   ticks: number;
@@ -213,11 +215,12 @@ async function record(env: Env, job: Job, o: Outcome): Promise<void> {
     if (!cur || o.score! < cur.score) {
       await env.DB.batch([
         env.DB.prepare(
-          `INSERT INTO leaderboard_entries (board_key, team_id, evaluation_id, replay_id, score, ticks, penalties, beginner, submitted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO leaderboard_entries (board_key, team_id, evaluation_id, replay_id, score, ticks, penalties, beginner, assisted, submitted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (board_key, team_id) DO UPDATE SET evaluation_id = excluded.evaluation_id, replay_id = excluded.replay_id,
-             score = excluded.score, ticks = excluded.ticks, penalties = excluded.penalties, beginner = excluded.beginner, submitted_at = excluded.submitted_at`,
-        ).bind(job.board_key, job.team_id, evalId, o.replayId, o.score, o.ticks, o.penalties, o.beginner, job.created_at),
+             score = excluded.score, ticks = excluded.ticks, penalties = excluded.penalties, beginner = excluded.beginner,
+             assisted = excluded.assisted, submitted_at = excluded.submitted_at, verified_at = NULL`,
+        ).bind(job.board_key, job.team_id, evalId, o.replayId, o.score, o.ticks, o.penalties, o.beginner, o.assisted ?? 0, job.created_at),
         env.DB.prepare('UPDATE replays SET keep = 1 WHERE id = ?').bind(o.replayId),
       ]);
       const snap = await rebuildBoard(env, job.board_key);

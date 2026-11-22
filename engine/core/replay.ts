@@ -24,6 +24,8 @@ export interface ReplayParticipant {
   name?: string;
   teamId?: string;
   botId?: string;
+  /** Driving assists used (e.g. "slow-50", "auto-throttle"). They never change physics. */
+  assist?: string[];
 }
 
 export interface ReplayResult {

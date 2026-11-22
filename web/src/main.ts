@@ -7,6 +7,7 @@
  *   #/boards[/<track>/<kind>]   live leaderboards        #/projector/<track>/<kind>  big-screen board
  *   #/replay/lap|baseline|remote|file/<id>               replay viewer
  *   #/standings                 team and college standings
+ *   #/settings                  reduced motion and driving assists
  *   #/signin  #/team  #/teams/<id>  #/admin
  * A <trackId> may also be a weekly twist's id.
  */
@@ -21,6 +22,8 @@ import { trainScreen } from './screens/train.js';
 import { signinScreen, teamScreen } from './screens/account.js';
 import { boardsScreen, projectorScreen, publicTeamScreen, standingsScreen } from './screens/boards.js';
 import { ensureCourse, getCourse } from './tracks.js';
+import { settingsScreen } from './screens/settings.js';
+import { applyMotion } from './prefs.js';
 import { adminScreen } from './screens/admin.js';
 
 const app = document.getElementById('app')!;
@@ -57,6 +60,7 @@ async function route(): Promise<void> {
       case 'team': screen = teamScreen(); break;
       case 'teams': screen = publicTeamScreen(parts[1]); break;
       case 'standings': screen = standingsScreen(); break;
+      case 'settings': screen = settingsScreen(); break;
       case 'admin': screen = adminScreen(); break;
       default: screen = homeScreen();
     }
@@ -107,6 +111,8 @@ async function renderAnnouncements(): Promise<void> {
 
 window.addEventListener('hashchange', () => void route());
 window.addEventListener('rgp:me', renderAccount);
+applyMotion();
+matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', applyMotion);
 void route();
 renderAccount();
 renderAnnouncements();

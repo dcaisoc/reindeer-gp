@@ -17,6 +17,7 @@ interface Entry {
   college: string;
   level: string;
   beginner: boolean;
+  assisted?: boolean;
   score: number;
   penalties: number;
   submittedAt: string;
@@ -165,7 +166,8 @@ export function boardsScreen(trackId?: string, kind?: string): Screen {
             h('td', {}, e.college),
             h('td', { class: 'num strong' }, fmtTime(e.score)),
             h('td', { class: 'num' }, String(e.penalties)),
-            h('td', {}, h('span', { class: `badge ${e.level}` }, e.level), e.beginner ? h('span', { class: 'badge beginner' }, 'beginner') : ''),
+            h('td', {}, h('span', { class: `badge ${e.level}` }, e.level), e.beginner ? h('span', { class: 'badge beginner' }, 'beginner') : '',
+              e.assisted ? h('span', { class: 'badge assisted', title: 'Driven with an accessibility assist (slower game speed or auto-throttle). Lap times are game time, so they are comparable.' }, 'assisted') : ''),
             h('td', {}, ago(e.submittedAt)),
             h('td', {}, h('div', { class: 'row-actions' },
               h('a', { class: 'btn small', href: `#/replay/remote/${e.replayId}` }, 'Watch'),

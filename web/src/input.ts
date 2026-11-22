@@ -82,6 +82,11 @@ export class HumanInput {
     this.steer = 0;
   }
 
+  /** Is go or brake held right now? (Auto-throttle steps aside while it is.) */
+  throttleHeld(): boolean {
+    return this.is('up') || this.is('down');
+  }
+
   /** Called once per physics tick. Returns [steer, throttle] in -127..127. */
   sample(): [number, number] {
     const target = (this.is('right') ? 127 : 0) - (this.is('left') ? 127 : 0);

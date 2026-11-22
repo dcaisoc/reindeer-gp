@@ -12,6 +12,7 @@ import type { TrackDef } from '../../../engine/reindeer/track.js';
 import { HumanInput } from '../input.js';
 import { Renderer } from '../render.js';
 import { bestLap, defaultUseForTraining, getLap, lapReplay, newId, qualityHint, saveLap, type LapRecord } from '../store.js';
+import { assistTags, autoThrottle, getPrefs, setPrefs } from '../prefs.js';
 import { configFor, ensureCourse, geometry, getCourse, sectorTimes } from '../tracks.js';
 import { download, fmtDelta, fmtTime, h, isTouchDevice, toast, type Screen } from '../ui.js';
 
@@ -44,6 +45,7 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   const sectorEl = h('div', { class: 'hud-sectors' });
   const bars = cfg.rayAnglesDeg.map(() => h('div', { class: 'bar' }, h('i')));
   const ghostEl = h('div', { class: 'hud-ghost' }, '');
+  const assistEl = h('div', { class: 'hud-assist' }, '');
   const countdownEl = h('div', { class: 'countdown', 'aria-live': 'assertive' });
   const pauseEl = h('div', { class: 'overlay', hidden: true });
   const summaryEl = h('div', { class: 'overlay summary', hidden: true });
@@ -67,7 +69,7 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
       h('div', { class: 'sensors', title: `What the sleigh’s ${cfg.rayAnglesDeg.length} distance sensors see (taller = more room)` }, bars),
       h('div', { class: 'hud-label' }, 'Sensors'),
     ),
-    h('div', { class: 'hud-br' }, ghostEl, h('div', { class: 'hud-keys' }, 'P pause · R restart · G ghost · V sensors · C camera')),
+    h('div', { class: 'hud-br' }, assistEl, ghostEl, h('div', { class: 'hud-keys' }, 'P pause · R restart · G ghost · V sensors · C camera')),
   );
 
   const el = h('main', { class: 'drive' }, canvas, hud, countdownEl, touch, pauseEl, summaryEl);
@@ -76,6 +78,8 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   const input = new HumanInput();
   touch.querySelectorAll<HTMLElement>('.tc').forEach((b) => input.bindButton(b, b.dataset.key as 'left'));
   let renderer: Renderer | null = null;
+  // Assists are read at the start of each run (change them in Settings, then restart).
+  let prefs = getPrefs();
   let rec = newRecorder();
   let phase: Phase = 'countdown';
   let countdownStart = performance.now();
@@ -90,7 +94,10 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   let ghostPinned = false;
 
   function newRecorder(): Recorder {
-    const r = new Recorder(track!, 1, { kind: 'human', name: 'You' }, cfg, geo);
+    prefs = getPrefs();
+    const assist = assistTags(prefs);
+    assistEl.textContent = assist.length ? `Assists: ${assist.map((a) => (a === 'auto-throttle' ? 'auto-throttle' : `${Math.round(prefs.slow * 100)}% speed`)).join(', ')}` : '';
+    const r = new Recorder(track!, 1, { kind: 'human', name: 'You', ...(assist.length ? { assist } : {}) }, cfg, geo);
     r.twist = course!.twist;
     return r;
   }
@@ -167,6 +174,19 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   const onResize = () => renderer?.resize();
   window.addEventListener('resize', onResize);
 
+  /** Driving assists, changeable while paused; they apply from the next restart. */
+  function assistControls(): HTMLElement {
+    const p = getPrefs();
+    const slow = h('select', { id: 'assist-slow', onchange: () => setPrefs({ slow: Number(slow.value) as 1 }) },
+      [[1, 'Normal speed'], [0.75, '75% speed'], [0.5, 'Half speed']].map(([v, t]) => h('option', { value: String(v), selected: v === p.slow }, String(t)))) as HTMLSelectElement;
+    const auto = h('input', { type: 'checkbox', id: 'assist-auto', checked: p.autoThrottle, onchange: () => setPrefs({ autoThrottle: auto.checked }) }) as HTMLInputElement;
+    return h('fieldset', { class: 'assists' },
+      h('legend', {}, 'Driving assists'),
+      h('p', {}, h('label', { for: 'assist-slow' }, 'Game speed '), slow),
+      h('p', {}, h('label', { class: 'check', for: 'assist-auto' }, auto, ' Auto-throttle: the game handles go and brake, you only steer')),
+      h('p', { class: 'muted small' }, 'Assists apply when you restart. Your lap time is measured in game time, so it is fair; laps with assists are marked "assisted" on the Human board.'));
+  }
+
   function togglePause(): void {
     if (phase === 'running') {
       phase = 'paused';
@@ -178,6 +198,7 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
             h('button', { class: 'btn', onclick: restart }, 'Restart'),
             h('a', { class: 'btn', href: '#/' }, 'Back to tracks'),
           ),
+          assistControls(),
         ),
       );
       pauseEl.hidden = false;
@@ -240,11 +261,17 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
     }
 
     if (phase === 'running') {
-      acc += Math.min(0.25, Math.max(0, now - lastFrame) / 1000);
+      // Slow mode runs the same physics ticks, just fewer per real second.
+      acc += Math.min(0.25, Math.max(0, now - lastFrame) / 1000) * prefs.slow;
       lastFrame = now;
       let steps = 0;
       while (acc >= DT && steps < MAX_STEPS_PER_FRAME && !g.isDone()) {
-        rec.tick(input.sample());
+        const act = input.sample();
+        if (prefs.autoThrottle && !input.throttleHeld() && rec.needsAction) {
+          const o = g.observe();
+          act[1] = autoThrottle(o.rays, o.speed);
+        }
+        rec.tick(act);
         acc -= DT;
         steps++;
         if (g.events.splits.length > sectorEl.childElementCount) onSplit();
