@@ -15,5 +15,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["engine", "tracks", "web/src", "scripts", "tests"]
+  "include": ["engine", "tracks", "web/src", "server", "scripts", "tests"]
 }

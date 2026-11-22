@@ -1,0 +1,72 @@
+# Cloudflare Worker for Reindeer Grand Prix: web app + API + Evaluator.
+# Free plan: Workers, D1, R2 and SQLite-backed Durable Objects are all included.
+# Setup steps: docs/setup.md.
+
+name = "reindeer-gp"
+main = "server/src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+# The Worker handles these paths; everything else is a static file (free and unlimited).
+run_worker_first = ["/api/*", "/replay/*"]
+
+[vars]
+APP_ENV = "production"
+ALLOWED_DOMAIN = "cam.ac.uk"
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET, REFEREE_EMAILS are secrets:
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET
+
+[[d1_databases]]
+binding = "DB"
+database_name = "reindeer-gp"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "server/migrations"
+
+[[r2_buckets]]
+binding = "BLOBS"
+bucket_name = "reindeer-gp"
+
+[[durable_objects.bindings]]
+name = "EVALUATOR"
+class_name = "Evaluator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Evaluator"]
+
+[triggers]
+# 00:05 UTC daily rank snapshot (UK time = UTC in winter); every 10 min, a queue safety net.
+crons = ["5 0 * * *", "*/10 * * * *"]
+
+[observability]
+enabled = true
+
+# ---------- staging: a separate Worker, database and bucket ----------
+[env.staging]
+name = "reindeer-gp-staging"
+
+[env.staging.vars]
+APP_ENV = "staging"
+ALLOWED_DOMAIN = "cam.ac.uk"
+DEV_LOGIN = "true"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "reindeer-gp-staging"
+database_id = "REPLACE_WITH_STAGING_D1_DATABASE_ID"
+migrations_dir = "server/migrations"
+
+[[env.staging.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "reindeer-gp-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "EVALUATOR"
+class_name = "Evaluator"
+
+[env.staging.triggers]
+crons = ["5 0 * * *", "*/10 * * * *"]
