@@ -43,7 +43,7 @@ jobs:
         run: npm run build
       - name: Worker bundles with Cloudflare's own tooling
         run: npm run worker:check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: dist
@@ -71,7 +71,7 @@ jobs:
         run: npx tsx tests/browser/m1.e2e.ts --shots e2e-shots
       - name: End-to-end M2 (Chromium, full server in Node)
         run: npx tsx tests/browser/m2.e2e.ts --shots e2e-shots
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-screenshots
