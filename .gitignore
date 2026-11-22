@@ -7,3 +7,8 @@ dist/
 test-results/
 __pycache__/
 .local/
+*.egg-info/
+build/
+.pytest_cache/
+.ipynb_checkpoints/
+site/

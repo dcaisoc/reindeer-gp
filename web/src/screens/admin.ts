@@ -69,7 +69,7 @@ export function adminScreen(): Screen {
       h('section', { class: 'card' },
         h('h2', {}, 'Competition switches'),
         toggle('submissions_open', 'Submissions', 'open', 'closed', 'Open submissions', 'Close submissions'),
-        toggle('boards_frozen', 'Boards', 'frozen (new results are recorded but not shown)', 'live', 'Freeze boards', 'Unfreeze boards'),
+        toggle('boards_frozen', 'Boards', 'frozen (new scores are saved, but never enter the boards)', 'live', 'Freeze boards', 'Unfreeze boards'),
         limitInput('bot_submissions_per_day', 'Bot submissions per team per day'),
         limitInput('human_submissions_per_day', 'Human laps per team per day'),
         h('a', { class: 'btn', href: '/api/v1/admin/export.csv' }, 'Download results (CSV)'),

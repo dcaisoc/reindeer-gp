@@ -1,0 +1,49 @@
+site_name: Reindeer Grand Prix
+site_description: A Christmas machine-learning competition. Drive a sleigh, teach a network to drive like you, race it on a live leaderboard.
+site_url: https://dcaisoc.github.io/reindeer-gp/
+repo_url: https://github.com/dcaisoc/reindeer-gp
+repo_name: dcaisoc/reindeer-gp
+edit_uri: edit/main/docs/
+copyright: Reindeer Grand Prix · MIT licence
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: red
+      accent: green
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: red
+      accent: green
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.superfences
+  - pymdownx.details
+
+nav:
+  - Home: index.md
+  - Players:
+      - How to play: play.md
+      - Python SDK: sdk.md
+      - Notebooks: notebooks.md
+  - Reference:
+      - Bot file format: formats/bot.md
+      - Replay file format: formats/replay.md
+      - Track file format: formats/track.md
+      - HTTP API: api.md
+  - Organisers:
+      - Going live: setup.md
+      - Runbook: runbook.md
+      - Adding a new game: new-game.md

@@ -153,6 +153,23 @@ try {
   check(hidden.status === 404, 'the owner can hide a replay from other people');
   await page.click('text=Make public');
 
+  // Upload a bot file trained elsewhere (e.g. in a notebook).
+  const goldenBot = JSON.parse(readFileSync('engine/golden/bots/bot-practice-3-tanh.json', 'utf8')).bot;
+  const badBotFile = join(lapDir, 'bad-bot.json');
+  writeFileSync(badBotFile, JSON.stringify({ ...goldenBot, outputs: ['steer'] }));
+  const botFile = join(lapDir, 'notebook-bot.json');
+  writeFileSync(botFile, JSON.stringify({ ...goldenBot, meta: { ...goldenBot.meta, name: 'Notebook bot' } }));
+  await page.goto(`${server.url}/#/team`);
+  await page.waitForSelector('#bot-file');
+  await page.setInputFiles('#bot-file', badBotFile);
+  await page.waitForSelector('text=must be exactly');
+  check(true, 'uploading a broken bot file shows the validator\'s message');
+  await page.setInputFiles('#bot-file', botFile);
+  await page.waitForSelector('text=is a valid bot');
+  await page.click('text=Submit to every track');
+  await page.waitForFunction("[...document.querySelectorAll('td')].some(td => /Notebook bot/.test(td.textContent))", null, { timeout: 15000 });
+  check(true, 'a bot file uploaded on the Team page is submitted');
+
   // Projector view.
   await page.goto(`${server.url}/#/projector/practice-1/bots`);
   await page.waitForSelector('.proj-list li');

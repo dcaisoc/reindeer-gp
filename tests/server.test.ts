@@ -308,3 +308,40 @@ test('randomInt is unbiased and in range', async () => {
   for (let i = 0; i < 31000; i++) counts[randomInt(31)]++;
   assert.ok(counts.every((c) => c > 800 && c < 1200), counts.join(','));
 });
+
+test('API tokens: shown once, limited to bot workflows, revocable', async () => {
+  const { env, client } = await setup({ REFEREE_EMAILS: 'ref@cam.ac.uk' });
+  const a = await client().login('ref@cam.ac.uk');
+  await teamUp(a, 'Token Team');
+  const made = await a.post('/api/v1/me/tokens', { label: 'my laptop' });
+  assert.equal(made.status, 201);
+  assert.match(made.data.token, /^rgp_[A-Za-z0-9_-]{30,}$/);
+  const list = (await a.get('/api/v1/me/tokens')).data.tokens;
+  assert.equal(list.length, 1);
+  assert.equal(JSON.stringify(list).includes(made.data.token), false, 'the token itself is never shown again');
+
+  // A tokenised client: no cookie, no Origin header (like the CLI).
+  const cli = async (method: string, path: string, body?: unknown, token = made.data.token) => {
+    const res = await handle(new Request(`${ORIGIN}${path}`, {
+      method, headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    }), env);
+    return { status: res.status, data: (await res.json()) as any };
+  };
+  assert.equal((await cli('GET', '/api/v1/me')).data.user.isReferee, false, 'tokens never carry referee powers');
+  const sub = await cli('POST', '/api/v1/submissions', { bot: goldenBot(), tracks: ['practice-1'] });
+  assert.equal(sub.status, 202);
+  await env.EVALUATOR.idle();
+  assert.equal((await cli('GET', `/api/v1/submissions/${sub.data.submissions[0].id}`)).data.submission.status, 'done');
+  assert.equal((await cli('POST', '/api/v1/teams/leave', {})).status, 403);
+  assert.equal((await cli('DELETE', '/api/v1/me')).status, 403);
+  assert.equal((await cli('GET', '/api/v1/admin/overview')).status, 403);
+  assert.equal((await cli('POST', '/api/v1/me/tokens', { label: 'x' })).status, 403, 'a token cannot mint more tokens');
+  assert.equal((await cli('GET', '/api/v1/me', undefined, 'rgp_not-a-real-token')).data.user, null);
+
+  assert.equal((await a.req('DELETE', `/api/v1/me/tokens/${made.data.id}`)).status, 200);
+  assert.equal((await cli('GET', '/api/v1/me')).data.user, null, 'revoked tokens stop working');
+  assert.equal((await cli('POST', '/api/v1/submissions', { bot: goldenBot() })).status, 401);
+  for (let i = 0; i < 5; i++) await a.post('/api/v1/me/tokens', { label: `t${i}` });
+  assert.equal((await a.post('/api/v1/me/tokens', { label: 'one too many' })).status, 409);
+});

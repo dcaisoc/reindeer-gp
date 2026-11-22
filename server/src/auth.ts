@@ -13,6 +13,7 @@ import { HttpError, bad, forbidden, json, readJson, unauthenticated } from './ht
 import { checkName, randomDisplayName } from './names.js';
 import { b64urlDecode, hmac, newId, nowIso, randomToken, safeEqual, sha256 } from './util.js';
 import { audit } from './audit.js';
+import { bearer, userIdForToken } from './tokens.js';
 import { rebuildBoard } from './boards.js';
 import { allBoardKeys } from './tracks.js';
 
@@ -47,6 +48,8 @@ function isSecure(req: Request): boolean {
 /** Reject cross-site writes: browsers always send Origin on POST/PUT/PATCH/DELETE. */
 export function checkOrigin(req: Request): void {
   if (req.method === 'GET' || req.method === 'HEAD') return;
+  // Bearer tokens are never sent automatically by browsers, so they can't be forged cross-site.
+  if (bearer(req)) return;
   const origin = req.headers.get('origin');
   if (!origin || origin !== new URL(req.url).origin) {
     throw new HttpError(403, 'bad_origin', 'This request did not come from the Reindeer Grand Prix site.');
@@ -54,6 +57,18 @@ export function checkOrigin(req: Request): void {
 }
 
 export async function currentUser(env: Env, req: Request): Promise<User | null> {
+  const apiToken = bearer(req);
+  if (apiToken) {
+    // A request with a token is judged by the token alone, never by cookies.
+    const userId = await userIdForToken(env, apiToken);
+    if (!userId) return null;
+    const u = await env.DB.prepare(
+      'SELECT u.id, u.display_name, u.is_referee, m.team_id FROM users u LEFT JOIN memberships m ON m.user_id = u.id WHERE u.id = ? AND u.deleted_at IS NULL',
+    )
+      .bind(userId)
+      .first<User>();
+    return u ? { ...u, is_referee: 0 } : null;
+  }
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) return null;
   const row = await env.DB.prepare(
