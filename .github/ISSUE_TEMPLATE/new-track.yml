@@ -1,0 +1,29 @@
+name: New track proposal
+description: Propose a track for practice or a weekly twist
+labels: [track]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Track name
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      options: ['1 - easy', '2 - medium', '3 - hard']
+  - type: textarea
+    id: shape
+    attributes:
+      label: Shape
+      description: Control points (as in tracks/src/defs.ts), a sketch, or a description. Mention ice or rough patches.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I ran `npm run tracks && npm run validate:tracks` and it passes
+        - label: I ran `npm run balance` and the baseline finishes

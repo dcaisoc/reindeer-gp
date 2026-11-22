@@ -1,0 +1,21 @@
+name: Bug report
+description: Something in the game, replays or tools is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: Page or command, browser and device (for example "Drive, Glacier Loop, Firefox 133 on Windows")
+  - type: textarea
+    id: replay
+    attributes:
+      label: Replay or screenshot
+      description: If it happened while driving, attach the .rgpr replay from Driving data. It lets us reproduce it exactly.

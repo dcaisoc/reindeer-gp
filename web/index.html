@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Reindeer Grand Prix</title>
+    <meta name="description" content="Drive a sleigh, teach a neural network to drive like you, and race the leaderboard." />
+    <meta name="theme-color" content="#0f2340" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#app">Skip to content</a>
+    <header class="topbar">
+      <a class="brand" href="#/"><span class="logo" aria-hidden="true">🦌</span> Reindeer Grand Prix</a>
+      <nav id="nav" aria-label="Main">
+        <a href="#/">Tracks</a>
+        <a href="#/laps">Driving data</a>
+      </nav>
+    </header>
+    <div id="app"></div>
+    <noscript><p class="page">Reindeer Grand Prix needs JavaScript to run the sleigh simulator.</p></noscript>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

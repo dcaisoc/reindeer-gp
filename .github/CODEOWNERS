@@ -1,0 +1,5 @@
+# Engine and format changes affect every result and replay: they need a maintainer's review.
+*                     @dcaisoc
+/engine/              @dcaisoc
+/tracks/              @dcaisoc
+/.github/workflows/   @dcaisoc

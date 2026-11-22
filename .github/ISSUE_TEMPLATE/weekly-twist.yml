@@ -1,0 +1,20 @@
+name: Weekly twist proposal
+description: A rule or condition change for one week (ice, narrow track, night mode, reversed...)
+labels: [twist]
+body:
+  - type: textarea
+    id: twist
+    attributes:
+      label: The twist
+      description: What changes, and why is it fun or educational?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config changes
+      description: Which engine settings or track data change (for example rayAnglesDeg for night mode)?
+  - type: input
+    id: week
+    attributes:
+      label: Suggested week

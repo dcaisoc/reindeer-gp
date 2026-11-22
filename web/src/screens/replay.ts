@@ -1,0 +1,351 @@
+/**
+ * Replay viewer: play, pause, speed 0.25x-4x, scrub, camera modes, sensor rays,
+ * speed-coloured trace, collision markers, sector splits and up to 3 ghosts.
+ * Replays store inputs only; the viewer re-simulates them and flags any
+ * replay that no longer matches this engine.
+ */
+
+import { decodeReplay, type Replay } from '../../../engine/core/replay.js';
+import { DEFAULT_CONFIG, ENGINE_VERSION } from '../../../engine/reindeer/config.js';
+import { runPolicy, simulateReplay, type Frame } from '../../../engine/reindeer/run.js';
+import { baselinePolicy } from '../../../engine/reindeer/autopilot.js';
+import { fcos, fsin } from '../../../engine/core/fmath.js';
+import type { TrackDef } from '../../../engine/reindeer/track.js';
+import { Renderer, type SleighDraw } from '../render.js';
+import { getLap, lapReplay, listLaps, type LapRecord } from '../store.js';
+import { geometry, getTrack, sectorTimes } from '../tracks.js';
+import { download, fmtDate, fmtDelta, fmtTime, h, toast, type Screen } from '../ui.js';
+
+const GHOST_COLOURS = ['#2b6cb0', '#6b46c1', '#2f855a'];
+const SPEEDS = [0.25, 0.5, 1, 2, 4];
+
+interface Loaded {
+  title: string;
+  track: TrackDef;
+  replay: Replay;
+  bytes: Uint8Array | null;
+  lapId?: string;
+}
+
+interface Sim {
+  frames: Frame[];
+  splits: number[];
+  collisions: number[];
+  matches: boolean;
+  firstMismatch: number;
+}
+
+/** A replay opened from a file is kept here so #/replay/file can show it. */
+let fileReplay: Loaded | null = null;
+
+export function replayScreen(kind?: string, id?: string): Screen {
+  const el = h('main', { class: 'viewer' }, h('p', { class: 'page' }, 'Loading replay…'));
+  let inner: Screen | null = null;
+  let disposed = false;
+  load(kind, id)
+    .then((l) => {
+      if (disposed) return;
+      inner = viewer(l);
+      el.replaceWith(inner.el);
+    })
+    .catch((e) => {
+      el.replaceChildren(
+        h('div', { class: 'page' },
+          h('h1', {}, 'Replay not found'),
+          h('p', {}, e instanceof Error ? e.message : String(e)),
+          h('p', {}, h('a', { href: '#/laps' }, 'Go to your driving data'), ' or load a replay file:'),
+          fileButton(),
+        ),
+      );
+    });
+  return {
+    el,
+    dispose: () => {
+      disposed = true;
+      inner?.dispose?.();
+    },
+  };
+}
+
+async function load(kind?: string, id?: string): Promise<Loaded> {
+  if (kind === 'lap' && id) {
+    const lap = await getLap(id);
+    if (!lap) throw new Error('That lap is not saved in this browser.');
+    const track = getTrack(lap.trackId);
+    if (!track) throw new Error(`Unknown track "${lap.trackId}".`);
+    return { title: `${lap.name === 'You' ? 'Your' : `${lap.name}'s`} lap · ${fmtDate(lap.createdAt)}`, track, replay: await lapReplay(lap), bytes: lap.bytes, lapId: lap.id };
+  }
+  if (kind === 'baseline' && id) {
+    const track = getTrack(id);
+    if (!track) throw new Error(`Unknown track "${id}".`);
+    const replay = runPolicy(track, baselinePolicy, { kind: 'bot', name: 'Baseline bot' }, { geo: geometry(track) });
+    return { title: 'Baseline bot', track, replay, bytes: null };
+  }
+  if (kind === 'file' && fileReplay) return fileReplay;
+  throw new Error('Nothing to show. Pick a lap from your driving data, or load a replay file.');
+}
+
+async function openFile(file: File): Promise<void> {
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const replay = await decodeReplay(bytes);
+    const track = getTrack(replay.header.track.id);
+    if (!track) throw new Error(`This replay is for track "${replay.header.track.id}", which this app does not have.`);
+    fileReplay = { title: `${replay.header.participants[0]?.name ?? 'Replay'} · ${file.name}`, track, replay, bytes };
+    if (location.hash === '#/replay/file') window.dispatchEvent(new HashChangeEvent('hashchange'));
+    else location.hash = '#/replay/file';
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), 'error');
+  }
+}
+
+function fileButton(): HTMLElement {
+  const input = h('input', { type: 'file', accept: '.rgpr', hidden: true, onchange: (e: Event) => {
+    const f = (e.target as HTMLInputElement).files?.[0];
+    if (f) openFile(f);
+  } });
+  return h('span', {}, h('button', { class: 'btn', onclick: () => input.click() }, 'Load replay file…'), input);
+}
+
+function simulate(track: TrackDef, replay: Replay): Sim {
+  const out = simulateReplay(track, replay, { geo: geometry(track), collectFrames: true });
+  return {
+    frames: out.frames!,
+    splits: out.game.events.splits,
+    collisions: out.game.events.collisionTicks,
+    matches: out.matches,
+    firstMismatch: out.firstMismatch,
+  };
+}
+
+function viewer(main: Loaded): Screen {
+  const { track } = main;
+  const geo = geometry(track);
+  const cfg = DEFAULT_CONFIG;
+  const primary = simulate(track, main.replay);
+  const last = primary.frames.length - 1;
+  const ghosts: { lap: LapRecord; sim: Sim; colour: string }[] = [];
+
+  let tick = 0;
+  let playing = true;
+  let speed = 1;
+  let showRays = true;
+  let showTrace = true;
+  let showCps = false;
+  let lastNow = performance.now();
+  let raf = 0;
+  let renderer: Renderer | null = null;
+
+  const canvas = h('canvas', { class: 'game', 'aria-label': `Replay on ${track.name}` });
+  const timeEl = h('span', { class: 'v-time' }, '0.00');
+  const scrub = h('input', { type: 'range', min: '0', max: String(last), value: '0', step: '1', 'aria-label': 'Replay position', class: 'scrub' });
+  const playBtn = h('button', { class: 'btn', 'aria-label': 'Pause' }, '❚❚');
+  const speedSel = h('select', { 'aria-label': 'Playback speed' }, SPEEDS.map((s) => h('option', { value: String(s), selected: s === 1 }, `${s}×`)));
+  const camBtn = h('button', { class: 'btn toggle', 'aria-pressed': 'true' }, 'Follow cam');
+  const raysBtn = h('button', { class: 'btn toggle', 'aria-pressed': 'true' }, 'Sensors');
+  const traceBtn = h('button', { class: 'btn toggle', 'aria-pressed': 'true' }, 'Trace');
+  const cpBtn = h('button', { class: 'btn toggle', 'aria-pressed': 'false' }, 'Checkpoints');
+  const sectorsEl = h('div');
+  const ghostList = h('div', { class: 'ghost-list' });
+  const divergeSec = primary.firstMismatch < 0 ? last / 60 : primary.firstMismatch + 1;
+  const banner = primary.matches
+    ? null
+    : h('div', { class: 'banner error', role: 'alert' },
+        `This replay doesn't match engine ${ENGINE_VERSION}: it diverges near ${fmtTime(divergeSec)} s. ` +
+          'It may come from another engine version or have been edited.');
+
+  const r = main.replay.header.result;
+  const side = h('aside', { class: 'viewer-side' },
+    h('h1', {}, main.title),
+    h('p', { class: 'muted' }, `${track.name} · engine ${main.replay.header.engineVersion}`),
+    h('dl', { class: 'figures' },
+      h('div', {}, h('dt', {}, 'Score'), h('dd', { class: 'big' }, r.valid ? fmtTime(r.score) : 'DNF')),
+      h('div', {}, h('dt', {}, 'Penalties'), h('dd', {}, String(r.penalties))),
+      h('div', {}, h('dt', {}, 'Wall hits'), h('dd', {}, String(r.collisions))),
+    ),
+    h('h2', {}, 'Sectors'),
+    sectorsEl,
+    h('h2', {}, 'Compare with ghosts'),
+    h('p', { class: 'muted small' }, 'Overlay up to 3 of your laps on this track.'),
+    ghostList,
+    h('div', { class: 'actions' },
+      main.lapId ? h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}/${main.lapId}` }, 'Race this ghost') : h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}` }, 'Drive this track'),
+      main.bytes ? h('button', { class: 'btn', onclick: () => download(main.bytes!, `${track.id}-replay.rgpr`) }, 'Download') : null,
+      fileButton(),
+    ),
+  );
+
+  const stage = h('div', { class: 'viewer-stage' }, canvas, banner);
+  const controls = h('div', { class: 'viewer-controls' },
+    h('button', { class: 'btn', 'aria-label': 'Restart', onclick: () => seek(0) }, '⏮'),
+    playBtn, timeEl, scrub, speedSel, camBtn, raysBtn, traceBtn, cpBtn,
+  );
+  const el = h('main', { class: 'viewer' }, stage, side, controls);
+
+  function setPlaying(p: boolean): void {
+    playing = p;
+    if (playing && tick >= last) tick = 0;
+    playBtn.textContent = playing ? '❚❚' : '▶';
+    playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    lastNow = performance.now();
+  }
+  function seek(t: number): void {
+    tick = Math.max(0, Math.min(last, t));
+    scrub.value = String(Math.floor(tick));
+  }
+  function toggle(btn: HTMLElement, on: boolean): boolean {
+    btn.setAttribute('aria-pressed', String(on));
+    return on;
+  }
+  playBtn.addEventListener('click', () => setPlaying(!playing));
+  scrub.addEventListener('input', () => {
+    tick = Number(scrub.value);
+    setPlaying(false);
+  });
+  speedSel.addEventListener('change', () => (speed = Number(speedSel.value)));
+  camBtn.addEventListener('click', () => {
+    if (!renderer) return;
+    renderer.mode = renderer.mode === 'follow' ? 'full' : 'follow';
+    camBtn.textContent = renderer.mode === 'follow' ? 'Follow cam' : 'Whole track';
+  });
+  raysBtn.addEventListener('click', () => (showRays = toggle(raysBtn, !showRays)));
+  traceBtn.addEventListener('click', () => (showTrace = toggle(traceBtn, !showTrace)));
+  cpBtn.addEventListener('click', () => (showCps = toggle(cpBtn, !showCps)));
+
+  function onKey(e: KeyboardEvent): void {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'SELECT' || tag === 'INPUT' && (e.target as HTMLInputElement).type !== 'range') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setPlaying(!playing);
+    } else if (e.code === 'ArrowRight' && tag !== 'INPUT') seek(tick + 60);
+    else if (e.code === 'ArrowLeft' && tag !== 'INPUT') seek(tick - 60);
+    else if (e.code === 'Home') seek(0);
+    else if (e.code === 'KeyC') camBtn.click();
+    else if (e.code === 'KeyV') raysBtn.click();
+    else if (e.code === 'KeyT') traceBtn.click();
+  }
+  window.addEventListener('keydown', onKey);
+  const onResize = () => renderer?.resize();
+  window.addEventListener('resize', onResize);
+
+  // Drag and drop a replay file anywhere on the viewer.
+  el.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    el.classList.add('dragging');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('dragging'));
+  el.addEventListener('drop', (e) => {
+    e.preventDefault();
+    el.classList.remove('dragging');
+    const f = e.dataTransfer?.files?.[0];
+    if (f) openFile(f);
+  });
+
+  function renderSectors(): void {
+    const mine = sectorTimes(track, primary.splits);
+    const cols = ghosts.map((g) => sectorTimes(track, g.sim.splits));
+    sectorsEl.replaceChildren(
+      h('table', { class: 'sectors' },
+        h('thead', {}, h('tr', {}, h('th', {}), h('th', { scope: 'col' }, 'This'),
+          ghosts.map((g, i) => h('th', { scope: 'col' }, h('span', { class: 'swatch', style: `background:${g.colour}` }), ` ${i + 1}`)))),
+        h('tbody', {}, mine.map((s, i) =>
+          h('tr', {}, h('th', { scope: 'row' }, `S${i + 1}`), h('td', {}, fmtTime(s)),
+            cols.map((c) => {
+              const v = c[i];
+              const d = s !== null && v !== null ? v - s : null;
+              return h('td', { class: d === null || Math.abs(d) < 0.005 ? '' : d > 0 ? 'behind' : 'ahead', title: 'Ghost minus this lap' }, d === null ? '—' : fmtDelta(d));
+            }),
+          ))),
+      ),
+    );
+  }
+
+  async function renderGhostPicker(): Promise<void> {
+    const laps = (await listLaps(track.id)).filter((l) => l.id !== main.lapId).slice(0, 30);
+    if (!laps.length) {
+      ghostList.replaceChildren(h('p', { class: 'muted small' }, 'No other laps on this track yet.'));
+      return;
+    }
+    ghostList.replaceChildren(
+      ...laps.map((lap) => {
+        const cb = h('input', { type: 'checkbox', id: `g-${lap.id}` });
+        cb.addEventListener('change', async () => {
+          if (cb.checked) {
+            if (ghosts.length >= 3) {
+              cb.checked = false;
+              toast('Up to 3 ghosts at once.');
+              return;
+            }
+            const used = new Set(ghosts.map((g) => g.colour));
+            const colour = GHOST_COLOURS.find((c) => !used.has(c))!;
+            ghosts.push({ lap, sim: simulate(track, await lapReplay(lap)), colour });
+          } else {
+            const i = ghosts.findIndex((g) => g.lap.id === lap.id);
+            if (i >= 0) ghosts.splice(i, 1);
+          }
+          renderSectors();
+        });
+        return h('label', { class: 'ghost-item', for: `g-${lap.id}` }, cb,
+          ` ${lap.result.valid ? fmtTime(lap.result.score) : 'DNF'} · ${fmtDate(lap.createdAt)}`);
+      }),
+    );
+  }
+
+  function frame(now: number): void {
+    raf = requestAnimationFrame(frame);
+    if (!renderer) {
+      renderer = new Renderer(canvas);
+      renderer.setTrack(track);
+    }
+    if (playing) {
+      // rAF timestamps can be slightly earlier than performance.now() taken in a click handler.
+      tick = Math.max(0, tick + (Math.max(0, now - lastNow) / 1000) * 60 * speed);
+      if (tick >= last) {
+        tick = last;
+        setPlaying(false);
+      }
+      scrub.value = String(Math.floor(tick));
+    }
+    lastNow = now;
+    const i = Math.max(0, Math.min(last, Math.floor(tick)));
+    const f = primary.frames[i];
+    timeEl.textContent = `${fmtTime(i / 60)} / ${fmtTime(last / 60)}`;
+    const sleighs: SleighDraw[] = ghosts.map((g) => {
+      const gf = g.sim.frames[Math.min(i, g.sim.frames.length - 1)];
+      return { x: gf.x, y: gf.y, heading: gf.heading, ghost: true, colour: g.colour };
+    });
+    sleighs.push({ x: f.x, y: f.y, heading: f.heading });
+    let rays = null;
+    if (showRays) {
+      const values = cfg.rayAnglesDeg.map((d) => {
+        const a = f.heading + (d * Math.PI) / 180;
+        return geo.castRay(f.x, f.y, fcos(a), fsin(a), cfg.rayRange) / cfg.rayRange;
+      });
+      rays = { x: f.x, y: f.y, heading: f.heading, anglesDeg: cfg.rayAnglesDeg, values, range: cfg.rayRange };
+    }
+    renderer.draw(
+      { x: f.x + Math.cos(f.heading) * 10, y: f.y + Math.sin(f.heading) * 10 },
+      {
+        sleighs,
+        rays,
+        trace: showTrace ? primary.frames : null,
+        traceUntil: i,
+        collisions: primary.collisions.filter((t) => t <= i).map((t) => primary.frames[t]),
+        showCheckpoints: showCps,
+      },
+    );
+  }
+
+  renderSectors();
+  renderGhostPicker();
+  raf = requestAnimationFrame(frame);
+  return {
+    el,
+    dispose: () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    },
+  };
+}
