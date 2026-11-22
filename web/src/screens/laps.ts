@@ -26,7 +26,7 @@ export function lapsScreen(initialTrack?: string): Screen {
   listTwists().then((tw) => {
     for (const w of tw) select.append(h('option', { value: w.id, selected: w.id === filter }, `🌀 ${w.name}`));
   });
-  const fileInput = h('input', { type: 'file', accept: '.rgpr', multiple: true, hidden: true, onchange: (e: Event) => importFiles((e.target as HTMLInputElement).files) });
+  const fileInput = h('input', { type: 'file', accept: '.rgpr', multiple: true, hidden: true, 'aria-label': 'Replay files to import', onchange: (e: Event) => importFiles((e.target as HTMLInputElement).files) });
 
   const el = h('main', { class: 'page laps' },
     h('h1', {}, 'Your driving data'),

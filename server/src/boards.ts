@@ -19,6 +19,8 @@ export interface BoardEntry {
   college: string;
   level: string;
   beginner: boolean;
+  /** A human lap driven with an accessibility assist (slow mode, auto-throttle). */
+  assisted: boolean;
   score: number;
   ticks: number;
   penalties: number;
@@ -46,13 +48,13 @@ export async function rebuildBoard(env: Env, key: string): Promise<BoardSnapshot
   // A stored baseline is a row lookup; computing one (first time only) needs the Evaluator's CPU, which is where boards are rebuilt.
   const b = c ? await baselineFor(env, c) : null;
   const rows = await env.DB.prepare(
-    `SELECT e.team_id, t.name, t.college, t.level, e.beginner, e.score, e.ticks, e.penalties, e.submitted_at, e.replay_id
+    `SELECT e.team_id, t.name, t.college, t.level, e.beginner, e.assisted, e.score, e.ticks, e.penalties, e.submitted_at, e.replay_id
        FROM leaderboard_entries e JOIN teams t ON t.id = e.team_id
       WHERE e.board_key = ? AND e.hidden = 0 AND t.hidden = 0
       ORDER BY e.score ASC, e.submitted_at ASC`,
   )
     .bind(key)
-    .all<{ team_id: string; name: string; college: string; level: string; beginner: number; score: number; ticks: number; penalties: number; submitted_at: string; replay_id: string }>();
+    .all<{ team_id: string; name: string; college: string; level: string; beginner: number; assisted: number; score: number; ticks: number; penalties: number; submitted_at: string; replay_id: string }>();
   const prev = await env.DB.prepare(
     'SELECT team_id, rank FROM rank_history WHERE board_key = ? AND day = (SELECT MAX(day) FROM rank_history WHERE board_key = ? AND day <= ?)',
   )
@@ -75,6 +77,7 @@ export async function rebuildBoard(env: Env, key: string): Promise<BoardSnapshot
       college: r.college,
       level: r.level,
       beginner: !!r.beginner,
+      assisted: !!r.assisted,
       score: r.score,
       ticks: r.ticks,
       penalties: r.penalties,

@@ -64,6 +64,7 @@ function routes(env: Env, ctx?: Ctx): Router {
     .on('GET', '/api/v1/announcements', () => admin.announcements(env))
     .on('GET', '/api/v1/admin/overview', (req) => admin.overview(env, req))
     .on('POST', '/api/v1/admin/settings', (req) => admin.setSetting(env, req))
+    .on('POST', '/api/v1/admin/verify', (req) => admin.verifyNow(env, req))
     .on('POST', '/api/v1/admin/entries/hide', (req) => admin.hideEntry(env, req))
     .on('POST', '/api/v1/admin/teams/:id', (req, p) => admin.editTeam(env, req, p.id))
     .on('POST', '/api/v1/admin/announcements', (req) => admin.postAnnouncement(env, req))
@@ -106,7 +107,12 @@ export default {
    * the queue (it also fills in missing baselines).
    */
   async scheduled(event: { cron: string }, env: Env): Promise<void> {
-    if (event.cron === '5 0 * * *') await snapshotRanks(env);
+    if (event.cron === '5 0 * * *') {
+      await snapshotRanks(env);
+      // Nightly integrity check of the top results, in the Evaluator (it has the CPU).
+      const stub = env.EVALUATOR.get(env.EVALUATOR.idFromName('main'));
+      await stub.fetch('https://evaluator/verify', { method: 'POST' });
+    }
     else {
       await twists.activateDueTwists(env);
       await kickEvaluator(env);

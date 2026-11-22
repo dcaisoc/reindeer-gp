@@ -20,6 +20,7 @@ import { drawLossCurve, drawNetwork } from '../train/visuals.js';
 import type { TrainMessage, TrainRequest } from '../train/worker.js';
 import { TRACKS, ensureCourse, geometry, getCourse, listTwists, type Course } from '../tracks.js';
 import type { EngineConfig } from '../../../engine/reindeer/config.js';
+import { reducedMotion } from '../prefs.js';
 import { download, fmtDate, fmtTime, h, toast, type Screen } from '../ui.js';
 
 const RAY_LABEL = ['far left', 'left', 'ahead-left', 'ahead', 'ahead-right', 'right', 'far right'];
@@ -72,6 +73,7 @@ export function trainScreen(trackParam?: string): Screen {
   /** Same laps + same settings give the same bot; "Train again" tries a new random start. */
   let trainCount = 0;
   let watchSpeed = 1;
+  let firstWatch = true;
 
   // ---------- step 1: data ----------
   const trackSel = h('select', { id: 'train-track', onchange: (e: Event) => (location.hash = `#/train/${(e.target as HTMLSelectElement).value}`) },
@@ -350,7 +352,8 @@ export function trainScreen(trackParam?: string): Screen {
         vals.push(m.valLoss);
         progress.value = (100 * m.epoch) / m.epochs;
         drawLossCurve(lossCanvas, losses, vals, m.epochs);
-        drawNetwork(liveNet, sizes, m.weights, settings.inputs.map(shortName));
+        // The flickering network is decoration: with reduced motion, draw it every 10 rounds.
+        if (!reducedMotion() || m.epoch % 10 === 0 || m.epoch === m.epochs) drawNetwork(liveNet, sizes, m.weights, settings.inputs.map(shortName));
       } else if (m.type === 'done') {
         finish();
         trained = { bot: m.bot, samples: m.samples, losses, valLosses: vals, laps: sel.length };
@@ -378,7 +381,8 @@ export function trainScreen(trackParam?: string): Screen {
 
   async function showResult(): Promise<void> {
     resultPanel.hidden = false;
-    resultPanel.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    resultPanel.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    firstWatch = true;
     await watch();
     renderSubmit();
   }
@@ -393,7 +397,10 @@ export function trainScreen(trackParam?: string): Screen {
   async function watch(): Promise<void> {
     if (!trained) return;
     cancelAnimationFrame(raf);
+    // With reduced motion, show the finished lap straight away (Watch again plays it).
     if (!Number.isFinite(watchSpeed)) watchSpeed = 1;
+    if (reducedMotion() && firstWatch) watchSpeed = Infinity;
+    firstWatch = false;
     const bot = trained.bot;
     const geo = geometry(track);
     const rep = evaluateBot(track, bot, {}, { geo, cfg, twist: course.twist });
@@ -423,8 +430,10 @@ export function trainScreen(trackParam?: string): Screen {
         g.step([act]);
         if (g.collisions > lastCollisions) {
           lastCollisions = g.collisions;
-          const r = g.observe().rays;
-          if (Math.min(r[0], r[1], r[2]) < Math.min(r[4], r[5], r[6])) hitsLeft++;
+          // Which side was closer: the left half of the rays or the right half (any ray count).
+          const r = Array.from(g.observe().rays);
+          const half = Math.floor(r.length / 2);
+          if (Math.min(...r.slice(0, half)) < Math.min(...r.slice(r.length - half))) hitsLeft++;
           else hitsRight++;
         }
         acc -= 1 / 60;

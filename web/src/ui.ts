@@ -7,7 +7,11 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = 
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (v === undefined || v === null || v === false) continue;
-    if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v as EventListener);
+    if (k.startsWith('on') && typeof v === 'function') {
+      el.addEventListener(k.slice(2).toLowerCase(), v as EventListener);
+      // Lets the accessibility audit check that every clickable thing is keyboard-reachable.
+      if (k === 'onclick') el.dataset.clickable = '';
+    }
     else if (k === 'class') el.className = String(v);
     // Via CSSOM, which the Content-Security-Policy allows (a style attribute would be blocked).
     else if (k === 'style') el.style.cssText = String(v);

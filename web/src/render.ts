@@ -76,7 +76,11 @@ export class Renderer {
   /** Metres visible across the shorter side in follow mode. */
   followSpan = 58;
 
-  constructor(readonly canvas: HTMLCanvasElement) {
+  constructor(
+    readonly canvas: HTMLCanvasElement,
+    /** Fix the pixel ratio (e.g. 1 for exported clips) instead of following the screen. */
+    private readonly fixedDpr?: number,
+  ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D is not available in this browser.');
     this.ctx = ctx;
@@ -85,7 +89,7 @@ export class Renderer {
 
   resize(): void {
     const r = this.canvas.getBoundingClientRect();
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = this.fixedDpr ?? Math.min(window.devicePixelRatio || 1, 2);
     this.w = Math.max(1, r.width);
     this.h = Math.max(1, r.height);
     this.canvas.width = Math.round(this.w * this.dpr);

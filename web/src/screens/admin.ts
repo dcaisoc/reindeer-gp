@@ -39,6 +39,7 @@ interface Overview {
   teams: { id: string; name: string; college: string; level: string; hidden: number; members: number; created_at: string }[];
   audit: { action: string; actor_id: string; target: string | null; display_name: string | null; created_at: string; details_json: string }[];
   announcements: { id: string; text: string; active: number; created_at: string }[];
+  integrity: { checked: number; mismatches: number; details: string; created_at: string } | null;
 }
 
 export function adminScreen(): Screen {
@@ -74,7 +75,7 @@ export function adminScreen(): Screen {
       return h('p', {}, h('label', { for: `set-${key}` }, `${label} `), inp, ' ',
         h('button', { class: 'btn small', onclick: () => act(() => api.post('/admin/settings', { key, value: inp.value }), 'Limit saved.') }, 'Save'));
     };
-    const annText = h('textarea', { id: 'ann', rows: '2', maxlength: '500', placeholder: 'Shown at the top of every page' });
+    const annText = h('textarea', { id: 'ann', 'aria-label': 'Announcement text', rows: '2', maxlength: '500', placeholder: 'Shown at the top of every page' });
     const boards = (await api.get<{ boards: { key: string; trackName: string; kind: string }[] }>('/boards')).boards;
     const boardSel = h('select', { id: 'board-sel' }, boards.map((b) => h('option', { value: b.key }, `${b.trackName} ${b.kind}`)));
     const twists = (await api.get<{ twists: TwistAdmin[] }>('/admin/twists')).twists;
@@ -96,6 +97,7 @@ export function adminScreen(): Screen {
           'Players': o.stats.users, 'Teams': o.stats.teams, 'Submissions today': o.stats.submissionsToday,
           'In the queue': o.stats.queued, 'Rejected today': o.stats.rejectedToday,
         }).map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', { class: 'big' }, String(v))))),
+        integrityLine(o.integrity),
       ),
       twistsCard(twists),
       h('section', { class: 'card' },
@@ -137,6 +139,17 @@ export function adminScreen(): Screen {
       ),
     );
     loadEntries();
+  }
+
+  function integrityLine(i: Overview['integrity']): HTMLElement {
+    const btn = h('button', { class: 'btn small', onclick: () => act(() => api.post('/admin/verify'), 'Integrity check finished.') }, 'Check now');
+    if (!i) return h('p', { class: 'integrity' }, 'Integrity check: not run yet (it runs every night). ', btn);
+    const problems = JSON.parse(i.details) as string[];
+    return h('div', { class: `integrity ${i.mismatches ? 'bad' : 'ok'}` },
+      h('p', {}, h('strong', {}, i.mismatches ? `⚠ Integrity check found ${i.mismatches} problem${i.mismatches === 1 ? '' : 's'}` : '✓ Integrity check passed'),
+        ` · ${i.checked} top results re-simulated · ${when(i.created_at)} `, btn),
+      problems.length ? h('ul', {}, problems.map((p) => h('li', {}, p))) : '',
+      i.mismatches ? h('p', { class: 'small' }, 'Hide the affected entries and see the runbook (Integrity problems).') : '');
   }
 
   function twistsCard(list: TwistAdmin[]): HTMLElement {

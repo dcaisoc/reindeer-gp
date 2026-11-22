@@ -30,7 +30,7 @@ All endpoints live under `/api/v1` on the same origin as the app. Responses are 
 | `GET /standings` | anyone, token | Team and college points, with the formula |
 | `GET /digest.md?days=7` | anyone, token | The weekly digest as markdown |
 | `GET /announcements` | anyone | Current announcements |
-| `GET /admin/overview`, `POST /admin/settings`, `POST /admin/entries/hide`, `POST /admin/teams/:id`, `POST /admin/announcements`, `DELETE /admin/announcements/:id`, `GET /admin/export.csv`, `GET/POST /admin/twists`, `PATCH/DELETE /admin/twists/:id {liveFrom, liveUntil, override}`, `POST /admin/twists/:id/dry-run` | referees | Referee tools; every change is audit-logged |
+| `GET /admin/overview`, `POST /admin/settings`, `POST /admin/entries/hide`, `POST /admin/teams/:id`, `POST /admin/announcements`, `DELETE /admin/announcements/:id`, `GET /admin/export.csv`, `GET/POST /admin/twists`, `PATCH/DELETE /admin/twists/:id {liveFrom, liveUntil, override}`, `POST /admin/twists/:id/dry-run`, `POST /admin/verify` (re-verify the top results now) | referees | Referee tools; every change is audit-logged |
 
 Outside `/api`, `GET /replay/:id` serves a small page with link-preview tags that forwards to the app.
 

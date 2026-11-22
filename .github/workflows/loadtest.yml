@@ -1,0 +1,40 @@
+name: Load test (staging)
+
+# The kickoff stampede: 200 simulated players sign in, make teams and submit
+# bots within 5 minutes, against STAGING. Passes with no errors and every entry
+# on its board within 30 s. Afterwards, run "Restore database" (the drill),
+# which also clears the load-test accounts from staging.
+#
+# Needs repository secret DEV_LOGIN_KEY: the same value as staging's
+# DEV_LOGIN_KEY Wrangler secret (test sign-in; it is switched off in production).
+on:
+  workflow_dispatch:
+    inputs:
+      users:
+        description: Simulated players
+        default: "200"
+      minutes:
+        description: Minutes over which they arrive
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    env:
+      DEV_LOGIN_KEY: ${{ secrets.DEV_LOGIN_KEY }}
+      URL: ${{ vars.STAGING_URL || 'https://reindeer-gp-staging.dcaisoc.workers.dev' }}
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$DEV_LOGIN_KEY" ]; then echo "::error::Add the DEV_LOGIN_KEY repository secret (same value as on staging). See docs/runbook.md."; exit 1; fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Staging is up
+        run: curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$URL/api/v1/health"
+      - name: Run the load test
+        run: node scripts/loadtest.mjs --url "$URL" --users "${{ inputs.users }}" --minutes "${{ inputs.minutes }}"

@@ -42,6 +42,7 @@ export async function overview(env: Env, req: Request): Promise<Response> {
     teams: teams.results,
     audit: audits.results,
     announcements: announcements.results,
+    integrity: await env.DB.prepare('SELECT checked, mismatches, details, created_at FROM integrity_checks ORDER BY created_at DESC LIMIT 1').first(),
   });
 }
 
@@ -129,4 +130,14 @@ export async function exportCsv(env: Env, req: Request): Promise<Response> {
   const csv = [cols.join(','), ...r.results.map((row) => cols.map((c) => cell(row[c])).join(','))].join('\n');
   await audit(env, u.id, 'export.csv', null, { rows: r.results.length });
   return new Response(csv, { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="reindeer-gp-results.csv"' } });
+}
+
+/** POST /api/v1/admin/verify: re-verify the top results now (normally nightly). */
+export async function verifyNow(env: Env, req: Request): Promise<Response> {
+  const u = await requireReferee(env, req);
+  const stub = env.EVALUATOR.get(env.EVALUATOR.idFromName('main'));
+  const res = await stub.fetch('https://evaluator/verify', { method: 'POST' });
+  const report = await res.json();
+  await audit(env, u.id, 'integrity.check', null, { checked: (report as { checked: number }).checked, mismatches: (report as { mismatches: number }).mismatches });
+  return json(report);
 }

@@ -31,6 +31,8 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
+      - name: Load test, in-process (60 players in 30 s; the full 200-player test runs against staging)
+        run: npm run loadtest:local -- --users 60 --minutes 0.5
       - name: Golden traces (Node)
         run: npm run test:golden
       - name: Track validator
@@ -73,6 +75,8 @@ jobs:
         run: npx tsx tests/browser/m2.e2e.ts --shots e2e-shots
       - name: End-to-end M4 (weekly twists, badges, standings, digest)
         run: npx tsx tests/browser/m4.e2e.ts --shots e2e-shots
+      - name: End-to-end M5 (accessibility audit of every page, keyboard, reduced motion, assists, GIF export)
+        run: npx tsx tests/browser/m5.e2e.ts --shots e2e-shots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

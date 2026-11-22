@@ -68,6 +68,19 @@ Badges are awarded automatically and shown on your team page:
 
 On the Bots board of every public track and every twist, the top six teams score **10, 7, 5, 3, 2 and 1 points**. **Team standings** add these up (ties go to more first places). **College standings** add up each college's **best 3 teams**, so a college can't win just by entering more teams; "Mixed / none" teams score only for themselves. Human boards are for glory and don't score points.
 
+## Settings and assists
+
+The ⚙ button (top right) opens **Settings**:
+
+- **Reduce motion**: no animations; replays wait for you to press Play. It follows your device's setting unless you change it.
+- **Driving assists**, for anyone who finds fast key presses hard: play at **75% or half speed**, and/or **auto-throttle** (the game handles go and brake; you only steer; ↑ or ↓ takes over). Assists never change the physics and lap times are game time, so the laps are fair and just as good for training. Laps driven with an assist are marked *assisted* on the Human board. You can also change assists from the pause menu (P).
+
+Everything except driving itself works with the keyboard: Tab moves between controls, Enter or Space presses them; in the replay viewer, Space plays and pauses.
+
+## Sharing a moment
+
+In the replay viewer, pause on your best moment (or your best crash) and use **Export a clip**: a few seconds as a GIF, which works everywhere, or as a video where your browser supports it. **Share link** copies a link anyone can open.
+
 ## Rules
 
 1. Bots must be files in the [bot format](formats/bot.md): a small network (up to 5,000 parameters) that decides from the sensors alone. No other code runs on the server.

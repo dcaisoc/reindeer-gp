@@ -1,0 +1,108 @@
+name: Restore database
+
+# Rebuild a database from a nightly backup, then check it: every table's row
+# count must match the backup, and the site must answer. The drill (default)
+# restores last night's PRODUCTION backup onto STAGING, which proves backups
+# work without touching players. Restoring production needs the "production"
+# environment's approval and typing RESTORE PRODUCTION. See docs/runbook.md.
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Which backup to restore (whose database it came from)
+        type: choice
+        options: [production, staging]
+        default: production
+      target:
+        description: Which database to overwrite
+        type: choice
+        options: [staging, production]
+        default: staging
+      backup_run:
+        description: Run id of the "Nightly backup" run to use (blank = the latest successful one)
+        required: false
+        default: ""
+      confirm:
+        description: To overwrite PRODUCTION, type RESTORE PRODUCTION
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: restore-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore ${{ inputs.source }} backup onto ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      GH_TOKEN: ${{ github.token }}
+      ENV_FLAG: ${{ inputs.target == 'staging' && '--env staging' || '' }}
+      SITE: ${{ inputs.target == 'staging' && (vars.STAGING_URL || 'https://reindeer-gp-staging.dcaisoc.workers.dev') || (vars.PRODUCTION_URL || 'https://reindeer-gp.dcaisoc.workers.dev') }}
+    steps:
+      - name: Start the clock
+        run: echo "T0=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Safety check
+        if: inputs.target == 'production'
+        run: |
+          if [ "${{ inputs.confirm }}" != "RESTORE PRODUCTION" ]; then
+            echo "::error::To overwrite production, type RESTORE PRODUCTION in the confirm box."; exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Download the backup
+        run: |
+          run="${{ inputs.backup_run }}"
+          if [ -z "$run" ]; then
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow backup.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          fi
+          if [ -z "$run" ]; then echo "::error::No successful Nightly backup run found."; exit 1; fi
+          created=$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json createdAt -q .createdAt)
+          echo "Using backup run $run from $created"
+          echo "BACKUP_RUN=$run" >> "$GITHUB_ENV"
+          echo "BACKUP_TIME=$created" >> "$GITHUB_ENV"
+          gh run download "$run" --repo "$GITHUB_REPOSITORY" -n "db-backup-${{ inputs.source }}" -D backup
+      - name: Decrypt
+        run: |
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_PASSPHRASE -in backup/backup.sql.gz.enc -out backup.sql.gz
+          gunzip backup.sql.gz
+          node scripts/d1-restore.mjs counts backup.sql > expected.json
+          cat expected.json
+      - name: Wipe the target database
+        run: |
+          npx wrangler d1 execute DB --remote $ENV_FLAG --json --command "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'sqlite_%'" > tables.json
+          node scripts/d1-restore.mjs drop-sql tables.json backup.sql > drop.sql
+          cat drop.sql
+          npx wrangler d1 execute DB --remote $ENV_FLAG --file drop.sql
+      - name: Load the backup
+        run: npx wrangler d1 execute DB --remote $ENV_FLAG --file backup.sql
+      - name: Check every table
+        run: |
+          sql=$(node -e "const c=require('./expected.json'); console.log(Object.keys(c).map(t => \"SELECT '\" + t + \"' AS name, COUNT(*) AS n FROM \\\"\" + t + \"\\\"\").join(' UNION ALL '))")
+          npx wrangler d1 execute DB --remote $ENV_FLAG --json --command "$sql" > live.json
+          node scripts/d1-restore.mjs compare expected.json live.json
+      - name: Check the site
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$SITE/api/v1/health"; echo
+          curl -fsS "$SITE/api/v1/boards" | head -c 400; echo
+      - name: Report
+        if: always()
+        run: |
+          mins=$(( ( $(date +%s) - T0 + 59 ) / 60 ))
+          {
+            echo "### Restore ${{ job.status == 'success' && 'succeeded' || 'FAILED' }}"
+            echo "- Backup: ${{ inputs.source }}, run ${BACKUP_RUN:-?} from ${BACKUP_TIME:-?}"
+            echo "- Target: ${{ inputs.target }} ($SITE)"
+            echo "- Time taken: about $mins minute(s) (the target is under 60)"
+          } >> "$GITHUB_STEP_SUMMARY"
