@@ -110,7 +110,7 @@ test('Raven ID-token claims are checked strictly', () => {
 });
 
 test('Raven start redirects to Google with hd=cam.ac.uk and a signed state cookie', async () => {
-  const { env } = await setup({ GOOGLE_CLIENT_ID: 'cid' });
+  const { env } = await setup({ GOOGLE_CLIENT_ID: '123456789012-abcdef0123.apps.googleusercontent.com' });
   const res = await handle(new Request(`${ORIGIN}/api/v1/auth/raven/start?return=/%23/train`), env);
   assert.equal(res.status, 302);
   const loc = new URL(res.headers.get('location')!);
@@ -307,4 +307,16 @@ test('randomInt is unbiased and in range', async () => {
   const counts = new Array(31).fill(0);
   for (let i = 0; i < 31000; i++) counts[randomInt(31)]++;
   assert.ok(counts.every((c) => c > 800 && c < 1200), counts.join(','));
+});
+
+test('a truncated Google client ID is caught before sending people to Google', async () => {
+  const { clientIdProblem } = await import('../server/src/auth.js');
+  assert.equal(clientIdProblem('123456789012-n06fs64ttfjdgbt0vq30qnr4vc25fr38.apps.googleusercontent.com'), null);
+  assert.match(clientIdProblem('n06fs64ttfjdgbt0vq30qnr4vc25fr38.apps.googleusercontent.com')!, /project number and a hyphen/);
+  assert.match(clientIdProblem('123-abc.apps.googleusercontent.com\n')!, /spaces or a line break/);
+  assert.match(clientIdProblem('123-abc')!, /should end with/);
+  const { env } = await setup({ GOOGLE_CLIENT_ID: 'n06fs64ttfjdgbt0vq30qnr4vc25fr38.apps.googleusercontent.com' });
+  const res = await handle(new Request(`${ORIGIN}/api/v1/auth/raven/start`), env);
+  assert.equal(res.status, 302);
+  assert.match(decodeURIComponent(res.headers.get('location')!), /#\/signin\?error=Raven sign-in is misconfigured/);
 });

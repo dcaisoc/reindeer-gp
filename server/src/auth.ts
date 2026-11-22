@@ -120,9 +120,27 @@ function safeReturnPath(p: string | null): string {
   return p && /^\/(?!\/)[\w\-./#?=&%]*$/.test(p) ? p : '/#/team';
 }
 
+/**
+ * Google client IDs look like "123456789012-abc…xyz.apps.googleusercontent.com".
+ * A common copy-paste slip drops the "123456789012-" part (double-click stops at
+ * the hyphen), which makes Google answer "invalid_client". Catch it here.
+ */
+export function clientIdProblem(id: string): string | null {
+  const v = id.trim();
+  if (v !== id) return 'GOOGLE_CLIENT_ID has spaces or a line break around it';
+  if (!v.endsWith('.apps.googleusercontent.com')) return 'GOOGLE_CLIENT_ID should end with .apps.googleusercontent.com';
+  if (!/^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(v)) return 'GOOGLE_CLIENT_ID should start with the project number and a hyphen, e.g. 123456789012-…';
+  return null;
+}
+
 /** GET /api/v1/auth/raven/start?return=/#/team */
 export async function ravenStart(env: Env, req: Request): Promise<Response> {
   if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'not_configured', 'Raven sign-in is not configured on this server yet.');
+  const problem = clientIdProblem(env.GOOGLE_CLIENT_ID);
+  if (problem) {
+    console.error(`GOOGLE_CLIENT_ID is misconfigured: ${problem}`);
+    return new Response(null, { status: 302, headers: { location: `/#/signin?error=${encodeURIComponent(`Raven sign-in is misconfigured on this server (${problem}). Please tell a referee.`)}` } });
+  }
   const url = new URL(req.url);
   const state = randomToken(16);
   const nonce = randomToken(16);
