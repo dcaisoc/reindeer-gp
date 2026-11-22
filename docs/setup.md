@@ -50,7 +50,7 @@ Raven OAuth2 is Google sign-in restricted to `@cam.ac.uk` accounts (see the [Rav
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**. Authorised redirect URIs:
    - `https://reindeer-gp.<subdomain>.workers.dev/api/v1/auth/raven/callback`
    - `https://reindeer-gp-staging.<subdomain>.workers.dev/api/v1/auth/raven/callback`
-4. Store the secrets in Cloudflare (each command asks for the value):
+4. Store the secrets in Cloudflare (each command asks for the value). Copy the client ID with the **copy button** next to it, not by double-clicking: double-clicking stops at the hyphen and drops the `123456789012-` at the start, which makes Google answer *invalid_client: The OAuth client was not found*.
 
    ```sh
    npx wrangler secret put GOOGLE_CLIENT_ID
