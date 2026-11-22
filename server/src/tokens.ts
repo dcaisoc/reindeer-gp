@@ -23,6 +23,7 @@ const TOKEN_ROUTES: [string, RegExp][] = [
   ['POST', /^\/api\/v1\/runs$/],
   ['GET', /^\/api\/v1\/runs\/count$/],
   ['GET', /^\/api\/v1\/boards(\/.*)?$/],
+  ['GET', /^\/api\/v1\/twists(\/[^/]+)?$/],
   ['GET', /^\/api\/v1\/replays\/[^/]+(\/file)?$/],
 ];
 

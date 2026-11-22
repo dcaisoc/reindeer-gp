@@ -7,13 +7,15 @@
 import type { BotFile } from '../../engine/core/bot.js';
 import { blobs } from './blobs.js';
 import { decodeReplay, encodeReplay } from '../../engine/core/replay.js';
-import { evaluateBot } from '../../engine/reindeer/bot-policy.js';
+import { evaluateBot, validateBotForEngine } from '../../engine/reindeer/bot-policy.js';
 import { ENGINE_VERSION } from '../../engine/reindeer/config.js';
 import { simulateReplay } from '../../engine/reindeer/run.js';
 import { getSetting } from './audit.js';
 import { rebuildBoard } from './boards.js';
 import type { Env } from './env.js';
-import { geometry, track } from './tracks.js';
+import { ensureBaselines, processDryRun } from './heavy.js';
+import { geometry, type Course } from './tracks.js';
+import { courseFor } from './twists.js';
 import { newId, nowIso } from './util.js';
 
 const STALE_MS = 2 * 60_000;
@@ -43,7 +45,12 @@ export async function processQueue(env: Env, opts: { deadline: number }): Promis
   for (;;) {
     if (Date.now() > opts.deadline) return true;
     const job = await env.DB.prepare("SELECT * FROM submissions WHERE status = 'queued' ORDER BY created_at LIMIT 1").first<Job>();
-    if (!job) return false;
+    if (!job) {
+      // Leaderboard work first; then referee dry runs and missing baselines, one at a time.
+      if (await processDryRun(env)) continue;
+      if (await ensureBaselines(env)) continue;
+      return false;
+    }
     const claimed = await env.DB.prepare("UPDATE submissions SET status = 'running', started_at = ? WHERE id = ? AND status = 'queued'").bind(nowIso(), job.id).run();
     if (!claimed.meta.changes) continue;
     try {
@@ -57,9 +64,15 @@ export async function processQueue(env: Env, opts: { deadline: number }): Promis
   }
 }
 
+async function courseOrReject(env: Env, id: string): Promise<Course> {
+  const c = await courseFor(env, id);
+  if (!c) throw new Rejection(`Unknown track "${id}".`);
+  return c;
+}
+
 async function runBot(env: Env, job: Job): Promise<void> {
-  const t = track(job.track_id);
-  if (!t) throw new Rejection(`Unknown track "${job.track_id}".`);
+  const c = await courseOrReject(env, job.track_id);
+  const t = c.track;
   const bot = await env.DB.prepare('SELECT b.*, t.name AS team_name, t.level FROM bots b JOIN teams t ON t.id = b.team_id WHERE b.id = ?')
     .bind(job.bot_id)
     .first<{ id: string; name: string; r2_key: string; trainer: string | null; trainer_arch: number; team_name: string; level: string }>();
@@ -67,7 +80,9 @@ async function runBot(env: Env, job: Job): Promise<void> {
   const obj = await blobs(env).get(bot.r2_key);
   if (!obj) throw new Rejection('The bot file is missing.');
   const file = JSON.parse(new TextDecoder().decode(await obj.arrayBuffer())) as BotFile;
-  const replay = evaluateBot(t, file, { name: `${bot.team_name}: ${bot.name}`, teamId: job.team_id, botId: bot.id }, { geo: geometry(t) });
+  const { errors } = validateBotForEngine(file, c.cfg);
+  if (errors.length) throw new Rejection(`This bot can't race on ${c.name}: ${errors[0]}`);
+  const replay = evaluateBot(t, file, { name: `${bot.team_name}: ${bot.name}`, teamId: job.team_id, botId: bot.id }, { geo: geometry(t), cfg: c.cfg, twist: c.twist });
 
   // Beginner bracket: Elf team, trainer-shaped network made by the web trainer,
   // and at least 3 verified laps of the team's own driving on this track.
@@ -86,9 +101,10 @@ async function runBot(env: Env, job: Job): Promise<void> {
     replayId,
     r2Key: key,
     kind: 'bot',
-    title: `${bot.name} (${bot.team_name}) on ${t.name}`,
+    title: `${bot.name} (${bot.team_name}) on ${c.name}`,
     finalHash: replay.header.finalHash,
     trackVersion: t.trackVersion,
+    twistId: c.twist?.id ?? null,
     valid: r.valid,
     score: r.score,
     ticks: r.ticks,
@@ -99,8 +115,8 @@ async function runBot(env: Env, job: Job): Promise<void> {
 }
 
 async function runHuman(env: Env, job: Job): Promise<void> {
-  const t = track(job.track_id);
-  if (!t) throw new Rejection(`Unknown track "${job.track_id}".`);
+  const c = await courseOrReject(env, job.track_id);
+  const t = c.track;
   const run = await env.DB.prepare('SELECT r.*, tm.name AS team_name, tm.level FROM runs r JOIN teams tm ON tm.id = r.team_id WHERE r.id = ?')
     .bind(job.run_id)
     .first<{ id: string; r2_key: string; team_name: string; level: string }>();
@@ -108,7 +124,10 @@ async function runHuman(env: Env, job: Job): Promise<void> {
   if (!run || !obj) throw new Rejection('The uploaded lap is missing.');
   const bytes = new Uint8Array(await obj.arrayBuffer());
   const replay = await decodeReplay(bytes);
-  const out = simulateReplay(t, replay, { geo: geometry(t) });
+  if ((replay.header.twist?.id ?? null) !== (c.twist?.id ?? null) || (c.twist && replay.header.twist!.version !== c.twist.version)) {
+    throw new Rejection(`This lap was driven on a different version of ${c.name}, so it can't be counted.`);
+  }
+  const out = simulateReplay(t, replay, { geo: geometry(t), cfg: c.cfg });
   if (!out.matches) {
     throw new Rejection("This lap doesn't replay identically on the server, so it can't be counted. It may come from an older version of the game.");
   }
@@ -125,9 +144,10 @@ async function runHuman(env: Env, job: Job): Promise<void> {
     replayId: newId('p_'),
     r2Key: run.r2_key,
     kind: 'human',
-    title: `${run.team_name} driving ${t.name}`,
+    title: `${run.team_name} driving ${c.name}`,
     finalHash: out.finalHash,
     trackVersion: t.trackVersion,
+    twistId: c.twist?.id ?? null,
     valid: res.valid,
     score: res.valid ? res.score : null,
     ticks: g.tick,
@@ -144,6 +164,7 @@ interface Outcome {
   title: string;
   finalHash: string;
   trackVersion: string;
+  twistId: string | null;
   valid: boolean;
   score: number | null;
   ticks: number;
@@ -161,8 +182,8 @@ async function record(env: Env, job: Job, o: Outcome): Promise<void> {
       o.replayId, o.kind, o.r2Key, job.team_id, job.track_id, o.title, o.valid ? o.score : null, o.finalHash, now,
     ),
     env.DB.prepare(
-      'INSERT INTO evaluations (id, submission_id, engine_version, track_id, track_version, valid, score, ticks, penalties, collisions, replay_id, beginner, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).bind(evalId, job.id, ENGINE_VERSION, job.track_id, o.trackVersion, o.valid ? 1 : 0, o.valid ? o.score : null, o.ticks, o.penalties, o.collisions, o.replayId, o.beginner, now),
+      'INSERT INTO evaluations (id, submission_id, engine_version, track_id, track_version, twist_id, valid, score, ticks, penalties, collisions, replay_id, beginner, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(evalId, job.id, ENGINE_VERSION, job.track_id, o.trackVersion, o.twistId, o.valid ? 1 : 0, o.valid ? o.score : null, o.ticks, o.penalties, o.collisions, o.replayId, o.beginner, now),
     env.DB.prepare("UPDATE submissions SET status = 'done', evaluation_id = ?, finished_at = ? WHERE id = ?").bind(evalId, now, job.id),
   ];
   await env.DB.batch(stmts);

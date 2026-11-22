@@ -15,7 +15,7 @@ import { b64urlDecode, hmac, newId, nowIso, randomToken, safeEqual, sha256 } fro
 import { audit } from './audit.js';
 import { bearer, userIdForToken } from './tokens.js';
 import { rebuildBoard } from './boards.js';
-import { allBoardKeys } from './tracks.js';
+import { allBoardKeys } from './twists.js';
 
 export const SESSION_COOKIE = 'rgp_session';
 const STATE_COOKIE = 'rgp_oauth';
@@ -275,7 +275,7 @@ export async function deleteMe(env: Env, req: Request): Promise<Response> {
     const left = await env.DB.prepare('SELECT COUNT(*) AS n FROM memberships WHERE team_id = ?').bind(u.team_id).first<{ n: number }>();
     if (!left?.n) {
       await env.DB.prepare("UPDATE teams SET name = 'Deleted team ' || substr(id, -6) WHERE id = ?").bind(u.team_id).run();
-      for (const key of allBoardKeys()) await rebuildBoard(env, key);
+      for (const key of await allBoardKeys(env)) await rebuildBoard(env, key);
     }
   }
   await audit(env, u.id, 'account.delete', u.id);
