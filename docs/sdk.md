@@ -23,6 +23,16 @@ reindeer selftest     # proves your installation matches the official engine
 
 Settings: `REINDEER_TOKEN` and `REINDEER_URL` environment variables override the saved login, which lives in `~/.config/reindeer-gp/config.json` (or `REINDEER_CONFIG`).
 
+## Weekly twists
+
+Anywhere a track id goes, a twist id works too: `reindeer eval bot.json --track night-oval`, `rgp.evaluate_bot("night-oval", bot)`, `rgp.SleighEnv("ice-hairpins")`, `sample_laps("night-oval")`. Example twists ship with the package; live ones are downloaded from the server the first time and cached. `reindeer tracks` lists both.
+
+```python
+night = rgp.course("night-oval")            # .track, .cfg (engine settings), .twist
+rgp.input_names(night.cfg)                  # ['ray0', 'ray1', 'ray2', 'speed', 'lateral', ...]
+X, Y = rgp.laps_to_arrays(laps, ["ray0", "ray1", "ray2", "speed"])  # laps driven on the twist
+```
+
 ## From laps to a bot in Python
 
 ```python
@@ -50,6 +60,7 @@ No PyTorch? `reindeer_sdk.train.train_mlp(X, Y, INPUTS, hidden=(32, 32))` is a s
 - `ReindeerGame(track, config, geometry)`: the simulation. `step((steer, throttle))` advances one 60 Hz tick with int8 actions (−127…127); `observe()` returns an `Observation` with `rays`, `speed`, `lateral`, `surface` and `to_inputs(names)`; `is_done()`, `result()`, `state_hash()`.
 - `TrackGeometry(track)`: walls, ray casting; reuse it across many races for speed.
 - `DEFAULT_CONFIG`, `make_config(**overrides)`, `input_names()`, `ENGINE_VERSION`.
+- `load_twist(id_or_file)`, `twist_config(twist)`, `course(id)` → `Course(track, cfg, twist)`, `bundled_twist_ids()`.
 
 **Bots**
 
@@ -77,4 +88,4 @@ No PyTorch? `reindeer_sdk.train.train_mlp(X, Y, INPUTS, hidden=(32, 32))` is a s
 
 **Talking to the server**
 
-`reindeer_sdk.api.Client(url=None, token=None)`: `me()`, `validate(bot)`, `submit(bot, tracks=None)`, `submission(id)`, `wait(id)`, `board(track, kind="bots")`. Errors raise `ApiError` with a plain-English message.
+`reindeer_sdk.api.Client(url=None, token=None)`: `me()`, `validate(bot)`, `submit(bot, tracks=None)`, `submission(id)`, `wait(id)`, `board(track, kind="bots")`, `twists()`, `twist(id)`. Errors raise `ApiError` with a plain-English message.

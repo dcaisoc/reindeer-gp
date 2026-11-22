@@ -37,7 +37,7 @@ interface Overview {
   settings: Record<string, string>;
   stats: Record<string, number>;
   teams: { id: string; name: string; college: string; level: string; hidden: number; members: number; created_at: string }[];
-  audit: { action: string; target: string | null; display_name: string | null; created_at: string; details_json: string }[];
+  audit: { action: string; actor_id: string; target: string | null; display_name: string | null; created_at: string; details_json: string }[];
   announcements: { id: string; text: string; active: number; created_at: string }[];
 }
 
@@ -133,7 +133,7 @@ export function adminScreen(): Screen {
       digestCard(),
       h('section', { class: 'card' },
         h('h2', {}, 'Audit log (latest 50)'),
-        h('ul', { class: 'audit' }, o.audit.map((a) => h('li', {}, `${fmtDate(a.created_at)} · ${a.display_name ?? 'someone'} · ${a.action}${a.target ? ` · ${a.target}` : ''}`))),
+        h('ul', { class: 'audit' }, o.audit.map((a) => h('li', {}, `${fmtDate(a.created_at)} · ${a.display_name ?? (a.actor_id === 'system' ? 'automatic (schedule)' : 'someone')} · ${a.action}${a.target ? ` · ${a.target}` : ''}`))),
       ),
     );
     loadEntries();
@@ -156,8 +156,8 @@ export function adminScreen(): Screen {
       file.value = '';
     };
     const rows = list.map((t) => {
-      const from = h('input', { type: 'datetime-local', value: toLocalInput(t.liveFrom), 'aria-label': `${t.name} opens` }) as HTMLInputElement;
-      const until = h('input', { type: 'datetime-local', value: toLocalInput(t.liveUntil), 'aria-label': `${t.name} closes` }) as HTMLInputElement;
+      const from = h('input', { type: 'datetime-local', step: '1', value: toLocalInput(t.liveFrom), 'aria-label': `${t.name} opens`, class: 'twist-from' }) as HTMLInputElement;
+      const until = h('input', { type: 'datetime-local', step: '1', value: toLocalInput(t.liveUntil), 'aria-label': `${t.name} closes`, class: 'twist-until' }) as HTMLInputElement;
       const set = (body: Record<string, unknown>, msg: string) => act(() => api.patch(`/admin/twists/${t.id}`, body), msg);
       const dry = t.dryRun;
       const dryBody = !dry ? h('p', { class: 'muted small' }, 'No dry run yet.')
@@ -165,7 +165,7 @@ export function adminScreen(): Screen {
         : h('details', {}, h('summary', {}, `Dry run ${when(dry.createdAt)}: ${dry.results?.bots?.filter((b) => b.valid).length ?? 0} of ${dry.results?.bots?.length ?? 0} bots finish (baseline ${dry.results?.baseline?.valid ? `${fmtTime(dry.results.baseline.score)} s` : 'DNF'})`),
             h('table', { class: 'laps-table' }, h('tbody', {}, (dry.results?.bots ?? []).map((b) =>
               h('tr', {}, h('td', {}, b.team), h('td', {}, b.botName), h('td', { class: 'num' }, b.valid ? `${fmtTime(b.score)} s` : '—'), h('td', { class: 'muted small' }, b.note ?? `${b.penalties} penalties`))))));
-      return h('article', { class: `twist-admin ${t.status}` },
+      return h('article', { class: `twist-admin ${t.status}`, 'data-twist': t.id },
         h('h3', {}, `🌀 ${t.name} `, h('span', { class: `badge ${t.status}` }, t.status === 'staged' ? 'not public yet' : t.status), h('small', { class: 'muted' }, ` ${t.id} v${t.version} · on ${t.baseTrack}`)),
         h('p', { class: 'muted small' }, t.description),
         h('p', {}, `Opens ${when(t.liveFrom)} · closes ${when(t.liveUntil)}`, t.override ? h('strong', {}, ` · override: ${t.override === 'live' ? 'live now' : 'taken down'}`) : '',

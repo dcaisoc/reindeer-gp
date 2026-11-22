@@ -107,8 +107,8 @@ export function boardsScreen(trackId?: string, kind?: string): Screen {
 
   const tabs = h('nav', { class: 'tabs', 'aria-label': 'Track' },
     TRACKS.map((t) => h('a', { href: `#/boards/${t.id}/${k}`, 'aria-current': t.id === track.id ? 'page' : undefined }, t.name)));
-  // Weekly twists: live ones first, then past ones.
-  listTwists().then((tw) => {
+  // Weekly twists: live ones first, then past ones. Always fresh here: a twist may have just opened.
+  listTwists(true).then((tw) => {
     for (const w of [...tw].sort((a, b) => Number(b.live) - Number(a.live))) {
       tabs.append(h('a', { class: `twist-tab${w.live ? ' live' : ''}`, href: `#/boards/${w.id}/${k}`, 'aria-current': w.id === course.id ? 'page' : undefined },
         `🌀 ${w.name}`, w.live ? '' : h('small', {}, ' (ended)')));

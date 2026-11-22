@@ -80,11 +80,14 @@ export function isPublicTrack(id: string): boolean {
 }
 
 let summaries: Promise<TwistSummary[]> | null = null;
+let fetchedAt = 0;
+const TWIST_LIST_TTL_MS = 30_000;
 
-/** Public twists (live and past), fetched once per page load (refresh with force). */
+/** Public twists (live and past). Cached for 30 s, so a tab left open still sees a twist open. */
 export function listTwists(force = false): Promise<TwistSummary[]> {
   if (!navigator.onLine) return Promise.resolve([]);
-  if (!summaries || force) {
+  if (!summaries || force || Date.now() - fetchedAt > TWIST_LIST_TTL_MS) {
+    fetchedAt = Date.now();
     summaries = fetch('/api/v1/twists', { cache: force ? 'no-store' : 'default' })
       .then((r) => (r.ok ? r.json() : { twists: [] }))
       .then((d: { twists: TwistSummary[] }) => d.twists)

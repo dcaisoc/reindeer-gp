@@ -209,6 +209,12 @@ export async function uploadTwist(env: Env, req: Request): Promise<Response> {
       .bind(def.id, def.twistVersion, def.baseTrack, def.name, def.description, key, u.id, now, now)
       .run();
   }
+  if (check.baseline) {
+    const b = check.baseline as { valid: boolean; score: number | null; ticks?: number; penalties?: number };
+    await env.DB.prepare('INSERT OR REPLACE INTO baselines (course_id, version, valid, score, ticks, penalties) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(def.id, def.twistVersion, b.valid ? 1 : 0, b.score, b.ticks ?? 0, b.penalties ?? 0)
+      .run();
+  }
   await audit(env, u.id, existing ? 'twist.replace' : 'twist.upload', def.id, { version: def.twistVersion, from: existing?.version });
   return json({ ok: true, id: def.id, version: def.twistVersion, baseline: check.baseline }, existing ? 200 : 201);
 }

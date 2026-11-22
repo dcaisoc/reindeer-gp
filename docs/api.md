@@ -18,16 +18,19 @@ All endpoints live under `/api/v1` on the same origin as the app. Responses are 
 | `POST /teams {name, college, level}`, `POST /teams/join {code}`, `POST /teams/leave` | signed in | Teams of 1–4 |
 | `GET /teams/mine`, `PATCH /teams/mine` | team member (`GET`: token) | Your team (includes the join code) |
 | `GET /teams/:id` | anyone | Public team page |
-| `POST /bots/validate` (bot JSON) | anyone, token | Check a bot file without submitting |
-| `POST /submissions {bot, tracks?}` | team member, token | Submit a bot to every (or the listed) track; 20 per team per day |
+| `POST /bots/validate[?track=<id>]` (bot JSON) | anyone, token | Check a bot file without submitting (against a twist's sensors if given) |
+| `POST /submissions {bot, tracks?}` | team member, token | Submit a bot to the listed tracks/twists, or by default to every public track and every live twist whose sensors it fits (the response lists `skipped` ones with a reason); 20 per team per day |
 | `GET /submissions`, `GET /submissions/:id` | team member, token | Status: `queued`, `running`, `done`, `rejected` |
 | `POST /runs[?submit=1]` (.rgpr body) | team member, token | Save a lap (verified by re-simulation); `submit=1` enters it on the Human board |
 | `GET /runs/count?track=` | team member, token | Verified saved laps (Beginner bracket needs 3) |
-| `GET /boards`, `GET /boards/s1/<track>/base/<bots\|humans>` | anyone, token | Leaderboard snapshots (cached 5 s) |
+| `GET /boards`, `GET /boards/s1/<track>/<base or twist id>/<bots\|humans>` | anyone, token | Leaderboard snapshots (cached 5 s), including the baseline bot's result |
 | `GET /replays/:id`, `GET /replays/:id/file`, `GET /replays/:id/thumb.png` | anyone unless hidden (first two: token) | Replay metadata, file, preview picture |
 | `PATCH /replays/:id {visibility}`, `POST /replays/:id/thumbnail` | owning team | Privacy and link-preview picture |
+| `GET /twists`, `GET /twists/:id` | anyone, token | Weekly twists that are live or ended (a twist is invisible until it opens); `:id` returns the full twist file |
+| `GET /standings` | anyone, token | Team and college points, with the formula |
+| `GET /digest.md?days=7` | anyone, token | The weekly digest as markdown |
 | `GET /announcements` | anyone | Current announcements |
-| `GET /admin/overview`, `POST /admin/settings`, `POST /admin/entries/hide`, `POST /admin/teams/:id`, `POST /admin/announcements`, `DELETE /admin/announcements/:id`, `GET /admin/export.csv` | referees | Referee tools; every change is audit-logged |
+| `GET /admin/overview`, `POST /admin/settings`, `POST /admin/entries/hide`, `POST /admin/teams/:id`, `POST /admin/announcements`, `DELETE /admin/announcements/:id`, `GET /admin/export.csv`, `GET/POST /admin/twists`, `PATCH/DELETE /admin/twists/:id {liveFrom, liveUntil, override}`, `POST /admin/twists/:id/dry-run` | referees | Referee tools; every change is audit-logged |
 
 Outside `/api`, `GET /replay/:id` serves a small page with link-preview tags that forwards to the app.
 

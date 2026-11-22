@@ -301,9 +301,10 @@ body.projector-mode .topbar, body.projector-mode .announce { display: none; }
 @media (max-width: 700px) { .twist-card { flex-direction: column; } .twist-card .track-thumb { width: 100%; } }
 .kicker { margin: 0 0 4px; font-size: 0.85rem; font-weight: 700; color: #5b3fb3; text-transform: uppercase; letter-spacing: 0.04em; }
 .tabs a.twist-tab { color: #4a3496; }
+.tabs a.twist-tab[aria-current] { color: #fff; }
 .tabs a.twist-tab.live::after { content: ' ●'; color: var(--green); }
 .twist-note { background: #f1edfb; border-left: 4px solid #5b3fb3; padding: 8px 12px; border-radius: 6px; }
-.board-table tr.baseline-row td { background: #fff8e1; color: #5c4400; font-style: italic; border-top: 1px dashed #d9b84a; border-bottom: 1px dashed #d9b84a; }
+.board-table tr.baseline-row td { background: #eef2f7; color: var(--muted); font-style: italic; border-top: 1px dashed #9aa9bc; border-bottom: 1px dashed #9aa9bc; }
 .badge.live { background: #e7f6ee; color: var(--green); }
 .badge.ended { background: #eef1f5; color: var(--muted); }
 .badge.staged { background: #fff3cd; color: #6b5200; }
