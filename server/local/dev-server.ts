@@ -2,9 +2,11 @@
  * Run the whole system locally in plain Node: the built web app (dist/) plus
  * the real Worker API, with SQLite and files under .local/.
  *
- *   npm run build && npm run dev:server        -> http://localhost:8787
+ *   npm run dev        -> http://localhost:8000 (rebuilds the app when you save)
  *
- * Sign in with the "test sign-in" box (DEV_LOGIN), using any @cam.ac.uk address.
+ * There is no Raven here: Google only returns sign-ins to the registered
+ * staging and production addresses. Use the "test sign-in" box instead, with
+ * any @cam.ac.uk address. Data is kept in .local/ between runs.
  * Pass --memory to keep everything in memory (used by the browser tests).
  * Set REFEREE_EMAILS=you@cam.ac.uk to see the referee page.
  */
@@ -73,6 +75,18 @@ export function startDevServer(opts: { port?: number; memory?: boolean; dist?: s
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const s = await startDevServer({ port: Number(process.env.PORT ?? 8787), memory: process.argv.includes('--memory') });
-  console.log(`Reindeer Grand Prix (local server) at ${s.url}`);
+  if (process.argv.includes('--watch')) {
+    const { spawn } = await import('node:child_process');
+    const build = spawn(process.execPath, ['scripts/build-web.mjs', '--watch'], { stdio: ['ignore', 'pipe', 'inherit'] });
+    // Start serving once the first build has finished.
+    await new Promise<void>((resolve) => build.stdout!.on('data', (d: Buffer) => {
+      process.stdout.write(d);
+      if (d.toString().includes('Watching')) resolve();
+    }));
+    process.on('exit', () => build.kill());
+  }
+  const s = await startDevServer({ port: Number(process.env.PORT ?? 8000), memory: process.argv.includes('--memory') });
+  console.log(`\nReindeer Grand Prix running at ${s.url}`);
+  console.log('Sign in with the test sign-in box using any @cam.ac.uk address (Raven only works on staging and production).');
+  if (process.env.REFEREE_EMAILS) console.log(`Referees: ${process.env.REFEREE_EMAILS}`);
 }

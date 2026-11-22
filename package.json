@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "node scripts/build-web.mjs --serve",
+    "dev": "tsx server/local/dev-server.ts --watch",
     "build": "node scripts/build-web.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck && node scripts/check-banned-math.mjs",
@@ -22,7 +22,8 @@
     "balance": "tsx scripts/balance.ts",
     "ci": "npm run lint && npm test && npm run test:golden && npm run validate:tracks && npm run build",
     "dev:server": "npm run build && tsx server/local/dev-server.ts",
-    "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry"
+    "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry",
+    "dev:pages": "node scripts/build-web.mjs --serve"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

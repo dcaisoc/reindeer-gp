@@ -16,13 +16,9 @@ cd reindeer-gp
 make dev            # or: npm install && npm run dev
 ```
 
-Open <http://localhost:8000>. Steer with ← → (or A D), go and brake with ↑ ↓ (or W S), pause with P, restart with R.
+Open <http://localhost:8000>. This is the whole system running on your laptop (app, API, evaluation queue, leaderboards) and it rebuilds when you save. Steer with ← → (or A D), go and brake with ↑ ↓ (or W S), pause with P, restart with R.
 
-To run the whole system (app, API, evaluation queue, leaderboards) locally with no Cloudflare account:
-
-```sh
-npm run dev:server     # http://localhost:8787, with a test sign-in for any @cam.ac.uk address
-```
+**Signing in locally:** there is no Raven on your laptop (Google only returns sign-ins to the registered staging and production addresses). Use the *test sign-in* box with any @cam.ac.uk address; no password, nothing leaves your machine. Data is kept in `.local/` (delete it to start fresh). To see the referee page: `REFEREE_EMAILS=you@cam.ac.uk npm run dev`.
 
 Run every check CI runs:
 

@@ -24,9 +24,15 @@ export function signinScreen(params: URLSearchParams): Screen {
     el.append(
       error ? h('p', { class: 'banner-inline error', role: 'alert' }, error) : '',
       h('p', { class: 'lead' }, 'Sign in with your Cambridge Raven account to save laps to your team, submit bots and appear on the leaderboards. You can drive, train and watch without signing in.'),
-      me.ravenConfigured
-        ? h('a', { class: 'btn btn-primary big', href: `/api/v1/auth/raven/start?return=${encodeURIComponent(returnPath)}` }, 'Sign in with Raven')
-        : h('p', { class: 'muted' }, 'Raven sign-in is not configured on this server yet.'),
+      me.noServer
+        ? h('p', { class: 'banner-inline error', role: 'alert' },
+            "Can't reach the Reindeer Grand Prix server. If you're offline, your laps are safe in this browser; try again later. " +
+            "(Running it yourself? Use npm run dev, which starts the server too.)")
+        : me.ravenConfigured
+          ? h('a', { class: 'btn btn-primary big', href: `/api/v1/auth/raven/start?return=${encodeURIComponent(returnPath)}` }, 'Sign in with Raven')
+          : h('p', { class: 'muted' }, me.devLogin
+              ? 'This is a local or test copy without Raven: use the test sign-in below.'
+              : 'Raven sign-in is not configured on this server yet.'),
       h('p', { class: 'muted small' }, 'We only keep a fingerprint of your email (to recognise you next time), a display name you choose, and your team. Nothing else. You can delete your account at any time from the Team page.'),
     );
     if (me.devLogin) {

@@ -81,7 +81,7 @@ If Raven sign-in fails with "unverified app" or an admin-approval message, the C
 | Release to players | Actions → Deploy → Run workflow → production, then approve |
 | Roll back | Cloudflare dashboard → Workers → reindeer-gp → Deployments → previous version → *Deploy*; or re-run the production deploy from an older commit |
 | Back up the database | `npx wrangler d1 export reindeer-gp --remote --output backup.sql` (D1 also keeps 7 days of point-in-time history on the free plan) |
-| Run everything locally | `npm run dev:server` → <http://localhost:8787>, with test sign-in. Add `REFEREE_EMAILS=you@cam.ac.uk` to see the referee page |
+| Run everything locally | `npm run dev` → <http://localhost:8000>, with test sign-in (no Raven locally). `REFEREE_EMAILS=you@cam.ac.uk npm run dev` shows the referee page |
 | See whether free limits are close | Cloudflare dashboard → Workers → reindeer-gp → Metrics (requests per day; the free plan allows 100,000) |
 | Move to the $5 plan if limits bite | Cloudflare dashboard → Workers → Plans → Paid. No code change |
 
