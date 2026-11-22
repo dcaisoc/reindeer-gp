@@ -292,3 +292,29 @@ body.projector-mode .topbar, body.projector-mode .announce { display: none; }
 
 .token-value { word-break: break-all; background: #f3f6fa; padding: 2px 6px; border-radius: 4px; }
 .token-list { padding-left: 18px; font-size: 0.9rem; }
+
+/* ---------- M4: twists, baselines, badges, standings ---------- */
+.twists { display: grid; gap: 16px; margin: 0 0 24px; }
+.twist-card { flex-direction: row; border: 2px solid #5b3fb3; box-shadow: 0 4px 18px rgba(91, 63, 179, 0.15); }
+.twist-card .track-thumb { width: 42%; height: auto; min-height: 200px; }
+.twist-card .track-info { flex: 1; }
+@media (max-width: 700px) { .twist-card { flex-direction: column; } .twist-card .track-thumb { width: 100%; } }
+.kicker { margin: 0 0 4px; font-size: 0.85rem; font-weight: 700; color: #5b3fb3; text-transform: uppercase; letter-spacing: 0.04em; }
+.tabs a.twist-tab { color: #4a3496; }
+.tabs a.twist-tab.live::after { content: ' ●'; color: var(--green); }
+.twist-note { background: #f1edfb; border-left: 4px solid #5b3fb3; padding: 8px 12px; border-radius: 6px; }
+.board-table tr.baseline-row td { background: #fff8e1; color: #5c4400; font-style: italic; border-top: 1px dashed #d9b84a; border-bottom: 1px dashed #d9b84a; }
+.badge.live { background: #e7f6ee; color: var(--green); }
+.badge.ended { background: #eef1f5; color: var(--muted); }
+.badge.staged { background: #fff3cd; color: #6b5200; }
+.badge-shelf { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.badge-shelf li { display: flex; align-items: center; gap: 6px; padding: 6px 12px 6px 8px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-weight: 600; }
+.badge-shelf li.earned { border-color: #d9b84a; background: #fff8e1; }
+.badge-shelf li.locked { opacity: 0.55; filter: grayscale(1); font-weight: 400; }
+.badge-emoji { font-size: 1.3rem; }
+.formula ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+.formula summary { cursor: pointer; font-weight: 600; }
+.twist-admin { border-top: 1px solid var(--line); padding: 12px 0; }
+.twist-admin h3 { margin: 0 0 4px; }
+.twist-admin .schedule label { margin-right: 6px; }
+textarea.digest { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }

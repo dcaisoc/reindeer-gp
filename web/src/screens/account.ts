@@ -4,6 +4,7 @@ import { api, ApiError, getMe, refreshMe, type Submission, type TeamView } from 
 import { getTrack } from '../tracks.js';
 import { fmtDate, h, toast, type Screen } from '../ui.js';
 import { statusText } from './train.js';
+import { badgeShelf, type Badge } from './boards.js';
 
 const LEVEL_TEXT: Record<string, string> = {
   elf: 'Elf: never trained a network. Drive, click Train, submit. No code.',
@@ -126,6 +127,7 @@ export function teamScreen(): Screen {
                 ))))
           : h('p', { class: 'muted' }, 'Nothing yet. Train a bot, or submit one of your laps to the Human board from Driving data.'),
       ),
+      badgesCard(team.badges ?? []),
       uploadCard(),
       tokensCard(),
       profile,
@@ -177,6 +179,12 @@ export function teamScreen(): Screen {
   }
 
   /** Personal API tokens for the `reindeer` command-line tool and notebooks. */
+  function badgesCard(earned: Badge[]): HTMLElement {
+    const card = h('section', { class: 'card' }, badgeShelf(earned));
+    api.get<{ badges: Badge[] }>('/meta').then((m) => card.replaceChildren(badgeShelf(earned, m.badges))).catch(() => undefined);
+    return card;
+  }
+
   function uploadCard(): HTMLElement {
     const out = h('div', { 'aria-live': 'polite' });
     const file = h('input', { type: 'file', id: 'bot-file', accept: '.json,application/json' }) as HTMLInputElement;

@@ -76,6 +76,7 @@ export interface TeamView {
   level: 'elf' | 'reindeer' | 'santa';
   levelLocked: boolean;
   members: { id: string; displayName: string; role: string }[];
+  badges?: { id: string; name: string; emoji: string; description: string; awardedAt?: string }[];
   joinCode?: string;
 }
 
@@ -104,6 +105,11 @@ export async function waitForSubmission(id: string, onUpdate: (s: Submission) =>
     await new Promise((r) => setTimeout(r, delay));
     delay = Math.min(3000, delay * 1.5);
   }
+}
+
+/** A board's key: public tracks use "base"; a twist's board sits under its base track. */
+export function courseBoardKey(c: { id: string; baseTrack: string; twist: unknown }, kind: 'bots' | 'humans'): string {
+  return c.twist ? `s1/${c.baseTrack}/${c.id}/${kind}` : `s1/${c.id}/base/${kind}`;
 }
 
 export function boardKey(trackId: string, kind: 'bots' | 'humans'): string {

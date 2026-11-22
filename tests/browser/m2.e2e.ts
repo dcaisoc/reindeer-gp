@@ -114,12 +114,14 @@ try {
 
   // Leaderboard.
   await page.goto(`${server.url}/#/boards/practice-1/bots`);
-  await page.waitForSelector('.board-table tbody tr');
-  check((await page.textContent('.board-table tbody tr'))!.includes('Sleigh Bells'), 'team appears on the live Bots board');
+  const teamRows = '.board-table tbody tr:not(.baseline-row)';
+  await page.waitForSelector(teamRows);
+  check((await page.textContent(teamRows))!.includes('Sleigh Bells'), 'team appears on the live Bots board');
+  check((await page.locator('.board-table tr.baseline-row').count()) === 1, 'the baseline bot is shown as a reference row');
   await page.click('button[data-f=beginner]');
-  check((await page.locator('.board-table tbody tr').count()) === 1, 'Beginner filter shows the entry');
+  check((await page.locator(teamRows).count()) === 1, 'Beginner filter shows the entry');
   await page.click('button[data-f=santa]');
-  check((await page.locator('.board-table tbody tr').count()) === 0, 'Santa filter hides it');
+  check((await page.locator(teamRows).count()) === 0, 'Santa filter hides it');
   await page.click('button[data-f=all]');
   await shot(page, '15-board');
 
@@ -136,8 +138,8 @@ try {
 
   // Replay permalink + link preview page.
   await page.goto(`${server.url}/#/boards/practice-1/bots`);
-  await page.waitForSelector('.board-table tbody tr');
-  const href = await page.locator('.board-table a:has-text("Watch")').first().getAttribute('href');
+  await page.waitForSelector('.board-table tbody tr:not(.baseline-row)');
+  const href = await page.locator('.board-table tbody tr:not(.baseline-row) a:has-text("Watch")').first().getAttribute('href');
   const replayId = href!.split('/').pop()!;
   const anon = await (await browser.newContext({ bypassCSP: true })).newPage();
   await anon.goto(`${server.url}/replay/${replayId}`);

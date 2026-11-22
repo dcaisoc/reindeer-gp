@@ -9,11 +9,17 @@ import { decodeReplay } from '../../../engine/core/replay.js';
 import type { BotFile } from '../../../engine/core/bot.js';
 import { buildDataset, type LapSource } from './data.js';
 import { Trainer, type TrainConfig } from './mlp.js';
-import { TRACKS } from '../tracks.js';
+import type { EngineConfig } from '../../../engine/reindeer/config.js';
+import type { TrackDef } from '../../../engine/reindeer/track.js';
 
 export interface TrainRequest {
   type: 'train';
   laps: { trackId: string; bytes: Uint8Array }[];
+  /** Track and physics config of every course the laps were driven on (twists change both). */
+  courses: Record<string, { track: TrackDef; cfg: EngineConfig }>;
+  /** The sensors the bot will have (the selected course's rays). Rays never affect physics,
+   *  so laps driven anywhere can be re-read with these, e.g. daylight laps for a night bot. */
+  sensors: { rayAnglesDeg: number[]; rayRange: number };
   inputs: string[];
   config: TrainConfig;
   mirror: boolean;
@@ -36,10 +42,12 @@ self.onmessage = async (ev: MessageEvent<TrainRequest>) => {
     const t0 = performance.now();
     const sources: LapSource[] = [];
     for (const l of req.laps) {
-      const track = TRACKS.find((t) => t.id === l.trackId);
-      if (track) sources.push({ track, replay: await decodeReplay(l.bytes) });
+      const c = req.courses[l.trackId];
+      if (!c) continue;
+      const cfg = { ...c.cfg, rayAnglesDeg: req.sensors.rayAnglesDeg, rayRange: req.sensors.rayRange };
+      sources.push({ track: c.track, cfg, replay: await decodeReplay(l.bytes) });
     }
-    const data = buildDataset(sources, req.inputs, { mirror: req.mirror });
+    const data = buildDataset(sources, req.inputs, { mirror: req.mirror, rayCount: req.sensors.rayAnglesDeg.length });
     post({ type: 'data', samples: data.n, laps: sources.length });
     if (data.n < 20) throw new Error('There is not enough driving data. Drive a few laps first.');
     const tr = new Trainer(req.inputs, req.config);

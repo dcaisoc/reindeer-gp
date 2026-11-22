@@ -7,12 +7,12 @@ import { decodeReplay, ReplayFormatError } from '../../../engine/core/replay.js'
 import { simulateReplay } from '../../../engine/reindeer/run.js';
 import { ENGINE_VERSION } from '../../../engine/reindeer/config.js';
 import { bestLap, deleteLap, listLaps, newId, qualityHint, saveLap, updateLap, defaultUseForTraining, type LapRecord } from '../store.js';
-import { TRACKS, geometry, getTrack } from '../tracks.js';
+import { TRACKS, configFor, ensureCourse, ensureCourseForReplay, geometry, getCourse, listTwists } from '../tracks.js';
 import { download, fmtDate, fmtTime, h, toast, type Screen } from '../ui.js';
 import { submitHumanLap } from './drive.js';
 
 export function lapsScreen(initialTrack?: string): Screen {
-  let filter = initialTrack && getTrack(initialTrack) ? initialTrack : 'all';
+  let filter = initialTrack && getCourse(initialTrack) ? initialTrack : 'all';
   const body = h('div', { class: 'laps-body' });
   const select = h('select', { id: 'track-filter', onchange: (e: Event) => {
     filter = (e.target as HTMLSelectElement).value;
@@ -22,6 +22,10 @@ export function lapsScreen(initialTrack?: string): Screen {
     h('option', { value: 'all' }, 'All tracks'),
     TRACKS.map((t) => h('option', { value: t.id, selected: t.id === filter }, t.name)),
   );
+  // Weekly twists (live and past) join the list once loaded.
+  listTwists().then((tw) => {
+    for (const w of tw) select.append(h('option', { value: w.id, selected: w.id === filter }, `🌀 ${w.name}`));
+  });
   const fileInput = h('input', { type: 'file', accept: '.rgpr', multiple: true, hidden: true, onchange: (e: Event) => importFiles((e.target as HTMLInputElement).files) });
 
   const el = h('main', { class: 'page laps' },
@@ -42,9 +46,10 @@ export function lapsScreen(initialTrack?: string): Screen {
       try {
         const bytes = new Uint8Array(await f.arrayBuffer());
         const rep = await decodeReplay(bytes);
-        const track = getTrack(rep.header.track.id);
-        if (!track) throw new ReplayFormatError(`Unknown track "${rep.header.track.id}".`);
-        const out = simulateReplay(track, rep, { geo: geometry(track) });
+        const course = await ensureCourseForReplay(rep.header);
+        if (!course) throw new ReplayFormatError(`Unknown track "${rep.header.twist?.id ?? rep.header.track.id}" (a twist that isn't live yet?).`);
+        const track = course.track;
+        const out = simulateReplay(track, rep, { geo: geometry(track), cfg: configFor(course.id) });
         if (!out.matches) throw new ReplayFormatError(`does not match engine ${ENGINE_VERSION} (first difference at tick ${(out.firstMismatch + 1) * 60}).`);
         const lap: LapRecord = {
           id: newId(), trackId: track.id, trackVersion: rep.header.track.version, engineVersion: rep.header.engineVersion,
@@ -75,10 +80,13 @@ export function lapsScreen(initialTrack?: string): Screen {
       return;
     }
     const bests = new Map<string, LapRecord | null>();
-    for (const t of TRACKS) bests.set(t.id, await bestLap(t.id));
+    for (const id of new Set(laps.map((l) => l.trackId))) {
+      await ensureCourse(id);
+      bests.set(id, await bestLap(id));
+    }
     const used = laps.filter((l) => l.useForTraining).length;
     const rows = laps.map((lap) => {
-      const t = getTrack(lap.trackId);
+      const t = getCourse(lap.trackId);
       const best = bests.get(lap.trackId) ?? null;
       const hint = qualityHint(lap, best);
       const isBest = best?.id === lap.id;

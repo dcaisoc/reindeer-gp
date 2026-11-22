@@ -3,7 +3,7 @@
  * always-on recording, and the post-lap summary.
  */
 
-import { DT, DEFAULT_CONFIG, ENGINE_VERSION } from '../../../engine/reindeer/config.js';
+import { DT, ENGINE_VERSION } from '../../../engine/reindeer/config.js';
 import { Recorder, runPolicy, simulateReplay, type Frame } from '../../../engine/reindeer/run.js';
 import { baselinePolicy } from '../../../engine/reindeer/autopilot.js';
 import { decodeReplay, encodeReplay } from '../../../engine/core/replay.js';
@@ -12,7 +12,7 @@ import type { TrackDef } from '../../../engine/reindeer/track.js';
 import { HumanInput } from '../input.js';
 import { Renderer } from '../render.js';
 import { bestLap, defaultUseForTraining, getLap, lapReplay, newId, qualityHint, saveLap, type LapRecord } from '../store.js';
-import { geometry, getTrack, sectorTimes } from '../tracks.js';
+import { configFor, ensureCourse, geometry, getCourse, sectorTimes } from '../tracks.js';
 import { download, fmtDelta, fmtTime, h, isTouchDevice, toast, type Screen } from '../ui.js';
 
 type Phase = 'countdown' | 'running' | 'paused' | 'finished';
@@ -29,10 +29,11 @@ const COUNTDOWN_MS = 3000;
 const MAX_STEPS_PER_FRAME = 6;
 
 export function driveScreen(trackId: string, ghostLapId?: string): Screen {
-  const track = getTrack(trackId);
-  if (!track) throw new Error(`Unknown track "${trackId}".`);
+  const course = getCourse(trackId);
+  if (!course) throw new Error(`Unknown track "${trackId}". If it's a weekly twist, it may not be live yet.`);
+  const track = course.track;
   const geo = geometry(track);
-  const cfg = DEFAULT_CONFIG;
+  const cfg = course.cfg;
 
   // ---------- DOM ----------
   const canvas = h('canvas', { class: 'game', 'aria-label': `Driving on ${track.name}` });
@@ -60,10 +61,10 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   if (isTouchDevice()) touch.classList.add('show');
 
   const hud = h('div', { class: 'hud' },
-    h('div', { class: 'hud-tl' }, h('div', { class: 'hud-track' }, track.name), timeEl, penEl, deltaEl),
+    h('div', { class: 'hud-tl' }, h('div', { class: 'hud-track' }, course.twist ? `🌀 ${course.name}` : track.name), timeEl, penEl, deltaEl),
     h('div', { class: 'hud-tr' }, h('div', {}, speedEl, h('span', { class: 'unit' }, ' km/h')), sectorEl),
     h('div', { class: 'hud-bl' },
-      h('div', { class: 'sensors', title: 'What the sleigh’s 7 distance sensors see (taller = more room)' }, bars),
+      h('div', { class: 'sensors', title: `What the sleigh’s ${cfg.rayAnglesDeg.length} distance sensors see (taller = more room)` }, bars),
       h('div', { class: 'hud-label' }, 'Sensors'),
     ),
     h('div', { class: 'hud-br' }, ghostEl, h('div', { class: 'hud-keys' }, 'P pause · R restart · G ghost · V sensors · C camera')),
@@ -89,7 +90,9 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   let ghostPinned = false;
 
   function newRecorder(): Recorder {
-    return new Recorder(track!, 1, { kind: 'human', name: 'You' }, cfg, geo);
+    const r = new Recorder(track!, 1, { kind: 'human', name: 'You' }, cfg, geo);
+    r.twist = course!.twist;
+    return r;
   }
 
   // Ghosts: a lap chosen in the replay viewer, else your best lap; plus the baseline bot.
@@ -109,7 +112,7 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
     const lap = pick ?? b;
     if (lap) {
       const r = await lapReplay(lap);
-      const out = simulateReplay(track, r, { geo, collectFrames: true });
+      const out = simulateReplay(track, r, { geo, cfg, collectFrames: true });
       const label = pick ? `Chosen lap ${fmtTime(lap.result.score)}` : `Your best ${fmtTime(lap.result.score)}`;
       ghosts.best = { kind: 'best', frames: out.frames!, splits: out.game.events.splits, label };
       if (pick) ghostPinned = true;
@@ -117,8 +120,8 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
     updateGhostLabel();
   });
   {
-    const r = runPolicy(track, baselinePolicy, { kind: 'bot', name: 'Baseline' }, { geo });
-    const out = simulateReplay(track, r, { geo, collectFrames: true });
+    const r = runPolicy(track, baselinePolicy, { kind: 'bot', name: 'Baseline' }, { geo, cfg, twist: course.twist });
+    const out = simulateReplay(track, r, { geo, cfg, collectFrames: true });
     ghosts.baseline = { kind: 'baseline', frames: out.frames!, splits: out.game.events.splits, label: `Baseline bot ${fmtTime(r.header.result.score)}` };
   }
 
@@ -201,7 +204,7 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
     bestLap(track!.id).then(async (b) => {
       if (b && (!ghosts.best || !ghosts.best.label.endsWith(fmtTime(b.result.score)))) {
         const r = await lapReplay(b);
-        const out = simulateReplay(track!, r, { geo, collectFrames: true });
+        const out = simulateReplay(track!, r, { geo, cfg, collectFrames: true });
         ghosts.best = { kind: 'best', frames: out.frames!, splits: out.game.events.splits, label: `Your best ${fmtTime(b.result.score)}` };
         if (ghostKind === 'baseline') ghostKind = 'best';
         updateGhostLabel();
@@ -397,10 +400,10 @@ async function loadRemoteGhost(id: string): Promise<Ghost | null> {
     const { replay: meta } = await api.get<{ replay: { title: string; score: number | null; trackId: string } }>(`/replays/${encodeURIComponent(id)}`);
     const res = await fetch(`/api/v1/replays/${encodeURIComponent(id)}/file`, { credentials: 'same-origin' });
     if (!res.ok) return null;
-    const track = getTrack(meta.trackId);
-    if (!track) return null;
+    const c = await ensureCourse(meta.trackId);
+    if (!c) return null;
     const rep = await decodeReplay(new Uint8Array(await res.arrayBuffer()));
-    const out = simulateReplay(track, rep, { geo: geometry(track), collectFrames: true });
+    const out = simulateReplay(c.track, rep, { geo: geometry(c.track), cfg: c.cfg, collectFrames: true });
     return { kind: 'best', frames: out.frames!, splits: out.game.events.splits, label: `${meta.title.split(' on ')[0]} ${fmtTime(meta.score)}` };
   } catch {
     toast('Could not load that ghost.', 'error');
@@ -438,7 +441,7 @@ async function drawMiniMap(canvas: HTMLCanvasElement, track: TrackDef, lap: LapR
   const r = new Renderer(canvas);
   r.mode = 'full';
   r.setTrack(track);
-  const out = simulateReplay(track, await lapReplay(lap), { geo: geometry(track), collectFrames: true });
+  const out = simulateReplay(track, await lapReplay(lap), { geo: geometry(track), cfg: configFor(lap.trackId), collectFrames: true });
   const frames = out.frames!;
   const hits = out.game.events.collisionTicks.map((t) => frames[t]).filter(Boolean);
   r.draw({ x: 0, y: 0 }, { sleighs: [], trace: frames, collisions: hits });
