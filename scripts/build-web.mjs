@@ -13,11 +13,11 @@ cpSync('web/styles.css', `${out}/styles.css`);
 cpSync('web/public', out, { recursive: true });
 
 const options = {
-  entryPoints: ['web/src/main.ts'],
+  entryPoints: { app: 'web/src/main.ts', 'train-worker': 'web/src/train/worker.ts' },
   bundle: true,
   format: 'esm',
   target: 'es2022',
-  outfile: `${out}/app.js`,
+  outdir: out,
   sourcemap: true,
   minify: !dev,
   loader: { '.json': 'json' },

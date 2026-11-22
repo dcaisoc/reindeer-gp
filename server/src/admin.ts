@@ -109,7 +109,7 @@ export async function removeAnnouncement(env: Env, req: Request, id: string): Pr
 /** GET /api/v1/announcements — public. */
 export async function announcements(env: Env): Promise<Response> {
   const r = await env.DB.prepare('SELECT id, text, created_at FROM announcements WHERE active = 1 ORDER BY created_at DESC LIMIT 5').all();
-  return json({ announcements: r.results }, 200, { 'cache-control': 'public, max-age=30' });
+  return json({ announcements: r.results }, 200, { 'cache-control': 'no-cache' });
 }
 
 /** GET /api/v1/admin/export.csv — every current leaderboard entry. */

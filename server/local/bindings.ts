@@ -156,7 +156,8 @@ export function localEnv(opts: LocalEnvOptions = {}): Env & { EVALUATOR: LocalEv
   const evaluator = new LocalEvaluator();
   const env = {
     DB: db,
-    BLOBS: new LocalR2(opts.blobDir),
+    // Like production's default, keep files in the database unless a folder is given.
+    ...(opts.blobDir ? { BLOBS: new LocalR2(opts.blobDir) } : {}),
     EVALUATOR: evaluator,
     APP_ENV: 'local',
     SESSION_SECRET: 'local-dev-secret-not-for-production',

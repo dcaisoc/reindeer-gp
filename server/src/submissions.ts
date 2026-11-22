@@ -4,6 +4,7 @@
  */
 
 import { isTrainerArchitecture, type BotFile } from '../../engine/core/bot.js';
+import { blobs } from './blobs.js';
 import { decodeReplay, ReplayFormatError } from '../../engine/core/replay.js';
 import { validateBotForEngine } from '../../engine/reindeer/bot-policy.js';
 import { ENGINE_VERSION, GAME_ID } from '../../engine/reindeer/config.js';
@@ -62,7 +63,7 @@ export async function submitBot(env: Env, req: Request): Promise<Response> {
   const botId = newId('b_');
   const now = nowIso();
   const r2Key = `bots/${botId}.json`;
-  await env.BLOBS.put(r2Key, JSON.stringify(bot), { httpMetadata: { contentType: 'application/json' } });
+  await blobs(env).put(r2Key, JSON.stringify(bot), { httpMetadata: { contentType: 'application/json' } });
   const subs = trackIds.map((t) => ({ id: newId('s_'), trackId: t }));
   await env.DB.batch([
     env.DB.prepare(
@@ -113,7 +114,7 @@ export async function uploadRun(env: Env, req: Request): Promise<Response> {
   if (!run) {
     run = { id: newId('r_') };
     const key = `runs/${run.id}.rgpr`;
-    await env.BLOBS.put(key, bytes, { httpMetadata: { contentType: 'application/octet-stream' } });
+    await blobs(env).put(key, bytes, { httpMetadata: { contentType: 'application/octet-stream' } });
     await env.DB.prepare('INSERT INTO runs (id, team_id, user_id, track_id, r2_key, final_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(run.id, u.team_id, u.id, h.track.id, key, h.finalHash, now)
       .run();

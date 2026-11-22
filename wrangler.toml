@@ -1,5 +1,5 @@
 # Cloudflare Worker for Reindeer Grand Prix: web app + API + Evaluator.
-# Free plan: Workers, D1, R2 and SQLite-backed Durable Objects are all included.
+# Free plan: Workers, D1 and SQLite-backed Durable Objects are all included; no card needed.
 # Setup steps: docs/setup.md.
 
 name = "reindeer-gp"
@@ -26,9 +26,11 @@ database_name = "reindeer-gp"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
 migrations_dir = "server/migrations"
 
-[[r2_buckets]]
-binding = "BLOBS"
-bucket_name = "reindeer-gp"
+# Optional: files (bots, replays) live in D1 by default. To move them to R2 later
+# (R2 may ask for a payment card), create a bucket and uncomment:
+# [[r2_buckets]]
+# binding = "BLOBS"
+# bucket_name = "reindeer-gp"
 
 [[durable_objects.bindings]]
 name = "EVALUATOR"
@@ -59,10 +61,6 @@ binding = "DB"
 database_name = "reindeer-gp-staging"
 database_id = "REPLACE_WITH_STAGING_D1_DATABASE_ID"
 migrations_dir = "server/migrations"
-
-[[env.staging.r2_buckets]]
-binding = "BLOBS"
-bucket_name = "reindeer-gp-staging"
 
 [[env.staging.durable_objects.bindings]]
 name = "EVALUATOR"

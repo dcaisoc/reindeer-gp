@@ -43,7 +43,8 @@ export interface AssetsLike {
 
 export interface Env {
   DB: D1Like;
-  BLOBS: R2Like;
+  /** Optional R2 bucket for files; without it, files are stored in the database. */
+  BLOBS?: R2Like;
   EVALUATOR: EvaluatorNamespace;
   ASSETS?: AssetsLike;
   /** "production", "staging" or "local". */

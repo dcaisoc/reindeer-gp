@@ -8,7 +8,7 @@
 
 import { chromium, firefox, type Page } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { serve } from './serve.js';
+import { startDevServer } from '../../server/local/dev-server.js';
 
 const args = process.argv.slice(2);
 const shotsDir = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
@@ -65,7 +65,8 @@ async function driveLap(p: Page, base: string, trackId: string): Promise<{ title
   return { title, score };
 }
 
-const { server, url } = await serve('dist');
+const server = await startDevServer({ memory: true });
+const url = server.url;
 const browser = await (browserName === 'firefox' ? firefox : chromium).launch();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, bypassCSP: true });
 const page = await ctx.newPage();

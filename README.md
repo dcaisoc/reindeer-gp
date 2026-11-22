@@ -4,7 +4,7 @@ A Christmas machine-learning competition for Cambridge students. Drive a sleigh 
 
 This repository holds the whole system: the deterministic game engine, the browser app, the tracks, and (from later milestones) the server, Python SDK and notebooks.
 
-**Status:** milestone M1 (playable core). You can drive the three practice tracks, every lap is recorded in your browser, and you can watch replays and race your own ghost. Accounts, the in-browser trainer and leaderboards arrive in M2.
+**Status:** milestone M2 (kickoff-ready MVP). Drive the three practice tracks, train a bot in your browser from your own laps, sign in with Raven, form a team, submit, and watch the live leaderboards. Going live: [docs/setup.md](docs/setup.md).
 
 ## Quick start (5 minutes)
 
@@ -18,12 +18,18 @@ make dev            # or: npm install && npm run dev
 
 Open <http://localhost:8000>. Steer with ← → (or A D), go and brake with ↑ ↓ (or W S), pause with P, restart with R.
 
+To run the whole system (app, API, evaluation queue, leaderboards) locally with no Cloudflare account:
+
+```sh
+npm run dev:server     # http://localhost:8787, with a test sign-in for any @cam.ac.uk address
+```
+
 Run every check CI runs:
 
 ```sh
 npm run ci                         # typecheck, unit tests, golden traces, track validator, build
 npx playwright install chromium    # once
-npm run test:browser               # golden traces inside a browser + end-to-end checks
+npm run test:browser               # golden traces in a browser, then the M1 and M2 end-to-end journeys
 ```
 
 ## How it fits together
@@ -34,7 +40,8 @@ npm run test:browser               # golden traces inside a browser + end-to-end
                          │ golden traces: same inputs ⇒       │ laps saved in IndexedDB
                          │ identical state hashes in Node,    │ as tiny .rgpr replays
                          ▼ Chromium, Firefox (and Python, M3)  ▼
-                    server/ (M2: Cloudflare Workers re-simulate every submission)
+                    server/ (one Cloudflare Worker: API + app; an Evaluator Durable Object
+                             re-simulates every submission with the same engine)
 ```
 
 - **One engine, everywhere.** The same TypeScript engine runs the browser game and, from M2, the server that scores submissions. A replay stores only inputs, so the server re-simulates it and gets the identical result, bit for bit. See [the determinism rules](engine/core/fmath.ts).
@@ -49,11 +56,12 @@ npm run test:browser               # golden traces inside a browser + end-to-end
 | `engine/reindeer` | Sleigh physics, sensors, laps and penalties, baseline driver |
 | `engine/golden` | Golden-trace corpus and checker |
 | `tracks/` | Track data, generator sources, validator |
-| `web/` | The browser app (no framework; plain TypeScript and canvas) |
+| `web/` | The browser app (no framework; plain TypeScript and canvas), including the trainer |
+| `server/` | The Worker: API, sign-in, queue, leaderboards; `server/local` runs it in plain Node |
 | `tests/` | Unit tests and browser tests |
 | `scripts/` | Build, track generation, balance report, GitHub bootstrap |
 | `docs/` | Format specs and setup notes |
-| `server/`, `sdk/`, `notebooks/` | Arrive in M2 and M3 |
+| `sdk/`, `notebooks/` | Arrive in M3 |
 
 ## Contributing
 

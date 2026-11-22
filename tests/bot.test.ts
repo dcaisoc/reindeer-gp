@@ -95,3 +95,20 @@ test('imitation learning from keyboard laps produces a bot that finishes Frosty 
   const r = evaluateBot(t, bot).header.result;
   assert.ok(r.valid, `bot should finish (ticks ${r.ticks}, penalties ${r.penalties})`);
 });
+
+test('coaching tips point at the right problem in plain words', async () => {
+  const { coachingTips } = await import('../web/src/train/tips.js');
+  const base = {
+    finished: true, collisions: 0, hitsLeft: 0, hitsRight: 0, samples: 3000, laps: 4, params: 1410, hiddenLayers: 2,
+    lossHistory: Array.from({ length: 40 }, () => 0.2), valLoss: 0.2, trainLoss: 0.2, mirror: false, canMirror: true,
+    usesSpeed: true, rays: 7, botScore: 28, humanBest: 27,
+  };
+  const titles = (o: Partial<typeof base>) => coachingTips({ ...base, ...o }).map((t) => t.title).join(' | ');
+  assert.match(titles({}), /Clean lap/);
+  assert.match(titles({ finished: false, collisions: 9, hitsLeft: 7, hitsRight: 1 }), /keeps hitting the left wall/);
+  assert.match(titles({ laps: 1, samples: 500 }), /Not much driving data/);
+  assert.match(titles({ finished: false, params: 178 }), /too small/);
+  assert.match(titles({ valLoss: 0.35, trainLoss: 0.1 }), /memorising/);
+  assert.match(titles({ usesSpeed: false }), /can't feel its speed/);
+  assert.match(titles({ botScore: 26 }), /Faster than you/);
+});

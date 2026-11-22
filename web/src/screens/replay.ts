@@ -15,6 +15,7 @@ import { Renderer, type SleighDraw } from '../render.js';
 import { getLap, lapReplay, listLaps, type LapRecord } from '../store.js';
 import { geometry, getTrack, sectorTimes } from '../tracks.js';
 import { download, fmtDate, fmtDelta, fmtTime, h, toast, type Screen } from '../ui.js';
+import { api } from '../api.js';
 
 const GHOST_COLOURS = ['#2b6cb0', '#6b46c1', '#2f855a'];
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
@@ -25,6 +26,18 @@ interface Loaded {
   replay: Replay;
   bytes: Uint8Array | null;
   lapId?: string;
+  remote?: { id: string; canEdit: boolean; visibility: string; hasThumbnail: boolean };
+}
+
+interface RemoteMeta {
+  id: string;
+  trackId: string;
+  title: string;
+  score: number | null;
+  team: string;
+  visibility: string;
+  hasThumbnail: boolean;
+  canEdit: boolean;
 }
 
 interface Sim {
@@ -80,6 +93,18 @@ async function load(kind?: string, id?: string): Promise<Loaded> {
     if (!track) throw new Error(`Unknown track "${id}".`);
     const replay = runPolicy(track, baselinePolicy, { kind: 'bot', name: 'Baseline bot' }, { geo: geometry(track) });
     return { title: 'Baseline bot', track, replay, bytes: null };
+  }
+  if (kind === 'remote' && id) {
+    const { replay: meta } = await api.get<{ replay: RemoteMeta }>(`/replays/${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/v1/replays/${encodeURIComponent(id)}/file`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Could not download that replay.');
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const track = getTrack(meta.trackId);
+    if (!track) throw new Error(`Unknown track "${meta.trackId}".`);
+    return {
+      title: meta.title, track, replay: await decodeReplay(bytes), bytes,
+      remote: { id: meta.id, canEdit: meta.canEdit, visibility: meta.visibility, hasThumbnail: meta.hasThumbnail },
+    };
   }
   if (kind === 'file' && fileReplay) return fileReplay;
   throw new Error('Nothing to show. Pick a lap from your driving data, or load a replay file.');
@@ -169,7 +194,11 @@ function viewer(main: Loaded): Screen {
     h('p', { class: 'muted small' }, 'Overlay up to 3 of your laps on this track.'),
     ghostList,
     h('div', { class: 'actions' },
-      main.lapId ? h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}/${main.lapId}` }, 'Race this ghost') : h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}` }, 'Drive this track'),
+      main.lapId || main.remote
+        ? h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}/${main.lapId ?? main.remote!.id}` }, 'Race this ghost')
+        : h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}` }, 'Drive this track'),
+      main.remote ? h('button', { class: 'btn', onclick: () => share() }, 'Share link') : null,
+      main.remote?.canEdit ? visibilityButton() : null,
       main.bytes ? h('button', { class: 'btn', onclick: () => download(main.bytes!, `${track.id}-replay.rgpr`) }, 'Download') : null,
       fileButton(),
     ),
@@ -181,6 +210,47 @@ function viewer(main: Loaded): Screen {
     playBtn, timeEl, scrub, speedSel, camBtn, raysBtn, traceBtn, cpBtn,
   );
   const el = h('main', { class: 'viewer' }, stage, side, controls);
+
+  async function share(): Promise<void> {
+    const r = main.remote!;
+    const url = `${location.origin}/replay/${r.id}`;
+    if (r.canEdit && !r.hasThumbnail) {
+      // Draw a preview picture of the whole lap for chat apps (owner only, once).
+      try {
+        const png = await thumbnailPng(track, primary.frames);
+        await api.upload(`/replays/${r.id}/thumbnail`, png);
+        r.hasThumbnail = true;
+      } catch {
+        /* the link still works with the default picture */
+      }
+    }
+    try {
+      if (navigator.share) await navigator.share({ title: main.title, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        toast('Link copied. Paste it into your group chat.');
+      }
+    } catch {
+      toast(url);
+    }
+  }
+
+  function visibilityButton(): HTMLElement {
+    const r = main.remote!;
+    const btn = h('button', { class: 'btn' }, r.visibility === 'public' ? 'Make private' : 'Make public');
+    btn.addEventListener('click', async () => {
+      const next = r.visibility === 'public' ? 'hidden' : 'public';
+      try {
+        await api.patch(`/replays/${r.id}`, { visibility: next });
+        r.visibility = next;
+        btn.textContent = next === 'public' ? 'Make private' : 'Make public';
+        toast(next === 'public' ? 'Anyone with the link can watch this replay.' : 'Only your team can watch this replay now.');
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), 'error');
+      }
+    });
+    return btn;
+  }
 
   function setPlaying(p: boolean): void {
     playing = p;
@@ -348,4 +418,29 @@ function viewer(main: Loaded): Screen {
       window.removeEventListener('resize', onResize);
     },
   };
+}
+
+/** A 1200x630 picture of the whole lap (the size chat apps expect for previews). */
+async function thumbnailPng(track: TrackDef, frames: Frame[]): Promise<Blob> {
+  const holder = h('div', { style: 'position:fixed;left:-99999px;top:0;width:1200px;height:630px' });
+  const c = h('canvas', { style: 'width:1200px;height:630px' });
+  holder.append(c);
+  document.body.append(holder);
+  try {
+    const r = new Renderer(c);
+    r.mode = 'full';
+    r.setTrack(track);
+    const f = frames[frames.length - 1];
+    r.draw({ x: 0, y: 0 }, { sleighs: [{ x: f.x, y: f.y, heading: f.heading }], trace: frames });
+    const ctx = c.getContext('2d')!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(15, 35, 64, 0.85)';
+    ctx.fillRect(0, c.height - 70 * (c.height / 630), c.width, 70 * (c.height / 630));
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${30 * (c.height / 630)}px system-ui, sans-serif`;
+    ctx.fillText(`Reindeer Grand Prix · ${track.name}`, 24 * (c.width / 1200), c.height - 25 * (c.height / 630));
+    return await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('no png'))), 'image/png'));
+  } finally {
+    holder.remove();
+  }
 }

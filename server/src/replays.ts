@@ -1,6 +1,7 @@
 /** Replay metadata, files, privacy, thumbnails and shareable /replay/<id> pages. */
 
 import { currentUser, requireTeam } from './auth.js';
+import { blobs } from './blobs.js';
 import type { Env } from './env.js';
 import { HttpError, bad, json, notFound, readBody, readJson } from './http.js';
 import { track } from './tracks.js';
@@ -41,7 +42,7 @@ export async function replayMeta(env: Env, req: Request, id: string): Promise<Re
 
 export async function replayFile(env: Env, req: Request, id: string): Promise<Response> {
   const { r } = await load(env, req, id);
-  const obj = await env.BLOBS.get(r.r2_key);
+  const obj = await blobs(env).get(r.r2_key);
   if (!obj) throw notFound('That replay file');
   return new Response(await obj.arrayBuffer(), {
     headers: {
@@ -71,14 +72,14 @@ export async function uploadThumbnail(env: Env, req: Request, id: string): Promi
   const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   if (sig.some((b, i) => png[i] !== b)) throw new HttpError(415, 'not_png', 'Thumbnails must be PNG images.');
   const key = `thumbs/${id}.png`;
-  await env.BLOBS.put(key, png, { httpMetadata: { contentType: 'image/png' } });
+  await blobs(env).put(key, png, { httpMetadata: { contentType: 'image/png' } });
   await env.DB.prepare('UPDATE replays SET thumb_key = ? WHERE id = ?').bind(key, id).run();
   return json({ ok: true });
 }
 
 export async function thumbnail(env: Env, req: Request, id: string): Promise<Response> {
   const { r } = await load(env, req, id);
-  const obj = r.thumb_key ? await env.BLOBS.get(r.thumb_key) : null;
+  const obj = r.thumb_key ? await blobs(env).get(r.thumb_key) : null;
   if (!obj) return new Response(null, { status: 302, headers: { location: '/og-default.png' } });
   return new Response(await obj.arrayBuffer(), { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600' } });
 }

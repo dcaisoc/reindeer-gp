@@ -28,14 +28,15 @@ const TYPES: Record<string, string> = {
 export function startDevServer(opts: { port?: number; memory?: boolean; dist?: string; vars?: Record<string, string> } = {}) {
   const dist = opts.dist ?? 'dist';
   const env = localEnv(
-    opts.memory ? { vars: opts.vars } : { dbPath: '.local/reindeer-gp.sqlite', blobDir: '.local/blobs', vars: { REFEREE_EMAILS: process.env.REFEREE_EMAILS ?? '', ...opts.vars } },
+    opts.memory ? { vars: opts.vars } : { dbPath: '.local/reindeer-gp.sqlite', vars: { REFEREE_EMAILS: process.env.REFEREE_EMAILS ?? '', ...opts.vars } },
   );
   env.ASSETS = {
     async fetch(req: Request) {
       const path = normalize(decodeURIComponent(new URL(req.url).pathname)).replace(/^(\.\.[/\\])+/, '');
-      for (const file of [join(dist, path), join(dist, 'index.html')]) {
+      const candidates = path === '/' || path === '\\' ? [join(dist, 'index.html')] : [join(dist, path), join(dist, 'index.html')];
+      for (const file of candidates) {
         try {
-          const body = await readFile(path === '/' ? join(dist, 'index.html') : file);
+          const body = await readFile(file);
           return new Response(body, { headers: { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' } });
         } catch {
           /* try the SPA fallback */

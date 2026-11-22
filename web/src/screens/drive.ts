@@ -6,13 +6,14 @@
 import { DT, DEFAULT_CONFIG, ENGINE_VERSION } from '../../../engine/reindeer/config.js';
 import { Recorder, runPolicy, simulateReplay, type Frame } from '../../../engine/reindeer/run.js';
 import { baselinePolicy } from '../../../engine/reindeer/autopilot.js';
-import { encodeReplay } from '../../../engine/core/replay.js';
+import { decodeReplay, encodeReplay } from '../../../engine/core/replay.js';
+import { api, getMe, waitForSubmission } from '../api.js';
 import type { TrackDef } from '../../../engine/reindeer/track.js';
 import { HumanInput } from '../input.js';
 import { Renderer } from '../render.js';
 import { bestLap, defaultUseForTraining, getLap, lapReplay, newId, qualityHint, saveLap, type LapRecord } from '../store.js';
 import { geometry, getTrack, sectorTimes } from '../tracks.js';
-import { download, fmtDelta, fmtTime, h, isTouchDevice, type Screen } from '../ui.js';
+import { download, fmtDelta, fmtTime, h, isTouchDevice, toast, type Screen } from '../ui.js';
 
 type Phase = 'countdown' | 'running' | 'paused' | 'finished';
 type GhostKind = 'best' | 'baseline' | 'off';
@@ -92,8 +93,19 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
   }
 
   // Ghosts: a lap chosen in the replay viewer, else your best lap; plus the baseline bot.
-  const chosen = ghostLapId ? getLap(ghostLapId).then((l) => (l && l.trackId === track.id ? l : null)) : Promise.resolve(null);
+  if (ghostLapId?.startsWith('p_')) {
+    // A replay from the leaderboard or a shared link.
+    loadRemoteGhost(ghostLapId).then((g) => {
+      if (!g || disposed) return;
+      ghosts.best = g;
+      ghostKind = 'best';
+      ghostPinned = true;
+      updateGhostLabel();
+    });
+  }
+  const chosen = ghostLapId && !ghostLapId.startsWith('p_') ? getLap(ghostLapId).then((l) => (l && l.trackId === track.id ? l : null)) : Promise.resolve(null);
   Promise.all([chosen, bestLap(track.id)]).then(async ([pick, b]) => {
+    if (ghostPinned) return;
     const lap = pick ?? b;
     if (lap) {
       const r = await lapReplay(lap);
@@ -346,6 +358,8 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
         h('div', { class: 'actions' },
           h('button', { class: 'btn btn-primary', onclick: restart }, 'Drive again (Enter)'),
           h('a', { class: 'btn', href: `#/replay/lap/${lap.id}` }, 'Watch replay'),
+          r.valid ? h('button', { class: 'btn', onclick: (e: Event) => submitHumanLap(lap, e.currentTarget as HTMLButtonElement) }, 'Submit to Human board') : null,
+          h('a', { class: 'btn', href: `#/train/${track!.id}` }, 'Train a bot'),
           h('a', { class: 'btn', href: `#/laps/${track!.id}` }, 'Driving data'),
           h('button', { class: 'btn', onclick: () => download(bytes, `${track!.id}-${fmtTime(r.score ?? r.ticks / 60)}.rgpr`) }, 'Download'),
         ),
@@ -376,6 +390,48 @@ export function driveScreen(trackId: string, ghostLapId?: string): Screen {
       document.removeEventListener('visibilitychange', onVis);
     },
   };
+}
+
+async function loadRemoteGhost(id: string): Promise<Ghost | null> {
+  try {
+    const { replay: meta } = await api.get<{ replay: { title: string; score: number | null; trackId: string } }>(`/replays/${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/v1/replays/${encodeURIComponent(id)}/file`, { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const track = getTrack(meta.trackId);
+    if (!track) return null;
+    const rep = await decodeReplay(new Uint8Array(await res.arrayBuffer()));
+    const out = simulateReplay(track, rep, { geo: geometry(track), collectFrames: true });
+    return { kind: 'best', frames: out.frames!, splits: out.game.events.splits, label: `${meta.title.split(' on ')[0]} ${fmtTime(meta.score)}` };
+  } catch {
+    toast('Could not load that ghost.', 'error');
+    return null;
+  }
+}
+
+/** Upload a lap to the Human board and report the server's verdict. */
+export async function submitHumanLap(lap: LapRecord, btn: HTMLButtonElement): Promise<void> {
+  const me = await getMe();
+  if (!me.user) {
+    location.hash = '#/signin?return=laps';
+    return;
+  }
+  if (!me.user.teamId) {
+    location.hash = '#/team';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  try {
+    const r = await api.upload<{ submissionId: string }>('/runs?submit=1', lap.bytes);
+    const s = await waitForSubmission(r.submissionId, (x) => (btn.textContent = x.status === 'queued' ? 'Queued…' : 'Checking…'));
+    btn.textContent = s.status === 'done' ? (s.result?.valid ? `On the board: ${fmtTime(s.result.score)} s` : 'Checked (did not finish)') : 'Rejected';
+    if (s.status === 'rejected') toast(s.rejectReason ?? 'Rejected.', 'error');
+    window.dispatchEvent(new Event('rgp:submitted'));
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Submit to Human board';
+    toast(e instanceof Error ? e.message : String(e), 'error');
+  }
 }
 
 async function drawMiniMap(canvas: HTMLCanvasElement, track: TrackDef, lap: LapRecord): Promise<void> {

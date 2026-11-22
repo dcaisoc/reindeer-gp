@@ -5,6 +5,7 @@
  */
 
 import type { BotFile } from '../../engine/core/bot.js';
+import { blobs } from './blobs.js';
 import { decodeReplay, encodeReplay } from '../../engine/core/replay.js';
 import { evaluateBot } from '../../engine/reindeer/bot-policy.js';
 import { ENGINE_VERSION } from '../../engine/reindeer/config.js';
@@ -63,7 +64,7 @@ async function runBot(env: Env, job: Job): Promise<void> {
     .bind(job.bot_id)
     .first<{ id: string; name: string; r2_key: string; trainer: string | null; trainer_arch: number; team_name: string; level: string }>();
   if (!bot) throw new Rejection('The bot file is missing.');
-  const obj = await env.BLOBS.get(bot.r2_key);
+  const obj = await blobs(env).get(bot.r2_key);
   if (!obj) throw new Rejection('The bot file is missing.');
   const file = JSON.parse(new TextDecoder().decode(await obj.arrayBuffer())) as BotFile;
   const replay = evaluateBot(t, file, { name: `${bot.team_name}: ${bot.name}`, teamId: job.team_id, botId: bot.id }, { geo: geometry(t) });
@@ -79,7 +80,7 @@ async function runBot(env: Env, job: Job): Promise<void> {
   }
   const replayId = newId('p_');
   const key = `replays/${replayId}.rgpr`;
-  await env.BLOBS.put(key, await encodeReplay(replay), { httpMetadata: { contentType: 'application/octet-stream' } });
+  await blobs(env).put(key, await encodeReplay(replay), { httpMetadata: { contentType: 'application/octet-stream' } });
   const r = replay.header.result;
   await record(env, job, {
     replayId,
@@ -103,7 +104,7 @@ async function runHuman(env: Env, job: Job): Promise<void> {
   const run = await env.DB.prepare('SELECT r.*, tm.name AS team_name, tm.level FROM runs r JOIN teams tm ON tm.id = r.team_id WHERE r.id = ?')
     .bind(job.run_id)
     .first<{ id: string; r2_key: string; team_name: string; level: string }>();
-  const obj = run ? await env.BLOBS.get(run.r2_key) : null;
+  const obj = run ? await blobs(env).get(run.r2_key) : null;
   if (!run || !obj) throw new Rejection('The uploaded lap is missing.');
   const bytes = new Uint8Array(await obj.arrayBuffer());
   const replay = await decodeReplay(bytes);
