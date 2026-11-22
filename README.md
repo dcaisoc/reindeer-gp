@@ -4,7 +4,7 @@ A Christmas machine-learning competition for Cambridge students. Drive a sleigh 
 
 This repository holds the whole system: the deterministic game engine, the browser app, the tracks, and (from later milestones) the server, Python SDK and notebooks.
 
-**Status:** milestone M2 (kickoff-ready MVP). Drive the three practice tracks, train a bot in your browser from your own laps, sign in with Raven, form a team, submit, and watch the live leaderboards. Going live: [docs/setup.md](docs/setup.md).
+**Status:** milestone M3. Everything from M2 (drive, train in the browser, Raven sign-in, teams, live leaderboards) plus a [Python SDK](sdk/) with bit-identical scoring, the `reindeer` command line, API tokens, and three [Colab notebooks](notebooks/). Documentation: <https://dcaisoc.github.io/reindeer-gp/>. Going live: [docs/setup.md](docs/setup.md).
 
 ## Quick start (5 minutes)
 
@@ -35,7 +35,7 @@ npm run test:browser               # golden traces in a browser, then the M1 and
                          │                                    │
                          │ golden traces: same inputs ⇒       │ laps saved in IndexedDB
                          │ identical state hashes in Node,    │ as tiny .rgpr replays
-                         ▼ Chromium, Firefox (and Python, M3)  ▼
+                         ▼ Chromium, Firefox and Python (sdk/)  ▼
                     server/ (one Cloudflare Worker: API + app; an Evaluator Durable Object
                              re-simulates every submission with the same engine)
 ```

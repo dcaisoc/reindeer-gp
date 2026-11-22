@@ -177,7 +177,18 @@ def cmd_selftest(_: argparse.Namespace) -> int:
     return 0 if ok == total else 1
 
 
+def _safe_console() -> None:
+    """Old Windows consoles use a code page without ✓ ✗ ★; replace those rather than crash."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _safe_console()
     p = argparse.ArgumentParser(prog="reindeer", description="Reindeer Grand Prix toolkit.")
     p.add_argument("--version", action="version", version=f"reindeer-sdk {__version__} (engine {ENGINE_VERSION})")
     sub = p.add_subparsers(dest="cmd", required=True)
