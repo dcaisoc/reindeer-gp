@@ -334,3 +334,5 @@ textarea.digest { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo,
 .hud-assist { color: #ffe08a; font-weight: 600; }
 .clip-export { margin-top: 18px; }
 .clip-export h2 { font-size: 1rem; }
+.integrity.bad { background: #fde8eb; border-left: 4px solid var(--red); padding: 6px 12px; border-radius: 6px; }
+.integrity.ok strong { color: var(--green); }

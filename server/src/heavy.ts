@@ -7,7 +7,12 @@
 import type { BotFile } from '../../engine/core/bot.js';
 import { baselinePolicy } from '../../engine/reindeer/autopilot.js';
 import { evaluateBot, validateBotForEngine } from '../../engine/reindeer/bot-policy.js';
-import { runPolicy } from '../../engine/reindeer/run.js';
+import { runPolicy, simulateReplay } from '../../engine/reindeer/run.js';
+import { decodeReplay } from '../../engine/core/replay.js';
+import { audit } from './audit.js';
+import { parseBoardKey } from './tracks.js';
+import { allBoardKeys } from './twists.js';
+import { newId } from './util.js';
 import { twistConfig, type TwistDef } from '../../engine/reindeer/twist.js';
 import { validateTwist } from '../../tracks/validate.js';
 import { blobs } from './blobs.js';
@@ -111,12 +116,77 @@ export async function processDryRun(env: Env): Promise<boolean> {
   return true;
 }
 
+export interface IntegrityReport {
+  checked: number;
+  mismatches: number;
+  details: string[];
+}
+
+/**
+ * Re-verify the top 10 of every board: re-simulate each replay (every state hash
+ * must match), check its score against the board, and for bots re-run the bot
+ * itself and require the identical final state. Runs nightly; referees can also run it.
+ */
+export async function verifyTopResults(env: Env, perBoard = 10): Promise<IntegrityReport> {
+  const details: string[] = [];
+  let checked = 0;
+  const now = nowIso();
+  for (const key of await allBoardKeys(env)) {
+    const p = parseBoardKey(key)!;
+    const c = await courseFor(env, p.courseId, { includeStaged: true });
+    if (!c) continue;
+    const rows = await env.DB.prepare(
+      `SELECT e.team_id, e.score, e.replay_id, r.r2_key, r.final_hash, t.name AS team, s.bot_id
+         FROM leaderboard_entries e JOIN replays r ON r.id = e.replay_id JOIN teams t ON t.id = e.team_id
+         JOIN evaluations ev ON ev.id = e.evaluation_id JOIN submissions s ON s.id = ev.submission_id
+        WHERE e.board_key = ? AND e.hidden = 0 ORDER BY e.score, e.submitted_at LIMIT ?`,
+    ).bind(key, perBoard).all<{ team_id: string; score: number; replay_id: string; r2_key: string; final_hash: string; team: string; bot_id: string | null }>();
+    for (const e of rows.results) {
+      checked++;
+      const where = `${key} · ${e.team}`;
+      try {
+        const obj = await blobs(env).get(e.r2_key);
+        if (!obj) {
+          details.push(`${where}: replay file missing`);
+          continue;
+        }
+        const rep = await decodeReplay(new Uint8Array(await obj.arrayBuffer()));
+        const out = simulateReplay(c.track, rep, { cfg: c.cfg, geo: geometry(c.track) });
+        const res = out.game.result();
+        if (!out.matches || out.finalHash !== e.final_hash) details.push(`${where}: replay no longer re-simulates identically`);
+        else if (!res.valid || Math.abs(res.score - e.score) > 1e-9) details.push(`${where}: board says ${e.score.toFixed(3)} s, replay gives ${res.valid ? res.score.toFixed(3) : 'DNF'}`);
+        else if (e.bot_id) {
+          const bot = await env.DB.prepare('SELECT r2_key FROM bots WHERE id = ?').bind(e.bot_id).first<{ r2_key: string }>();
+          const bobj = bot ? await blobs(env).get(bot.r2_key) : null;
+          if (!bobj) details.push(`${where}: bot file missing`);
+          else {
+            const file = JSON.parse(new TextDecoder().decode(await bobj.arrayBuffer())) as BotFile;
+            const again = evaluateBot(c.track, file, {}, { cfg: c.cfg, geo: geometry(c.track), twist: c.twist });
+            if (again.header.finalHash !== e.final_hash) details.push(`${where}: the bot no longer produces its recorded lap`);
+          }
+        }
+        if (!details.some((d) => d.startsWith(where))) {
+          await env.DB.prepare('UPDATE leaderboard_entries SET verified_at = ? WHERE board_key = ? AND team_id = ?').bind(now, key, e.team_id).run();
+        }
+      } catch (err) {
+        details.push(`${where}: could not check (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+  }
+  await env.DB.prepare('INSERT INTO integrity_checks (id, checked, mismatches, details, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(newId('i_'), checked, details.length, JSON.stringify(details), now)
+    .run();
+  if (details.length) await audit(env, 'system', 'integrity.mismatch', null, { mismatches: details.length, details: details.slice(0, 20) });
+  return { checked, mismatches: details.length, details };
+}
+
 /**
  * Requests the Evaluator answers directly (anything else just wakes the queue).
  * POST /twist-check with a twist file: {errors, baseline}.
  */
 export async function evaluatorRequest(env: Env, req: Request): Promise<Response | null> {
   const path = new URL(req.url).pathname;
+  if (path === '/verify') return json(await verifyTopResults(env));
   if (path !== '/twist-check') return null;
   const def = (await req.json()) as TwistDef;
   const errors = validateTwist(def);
