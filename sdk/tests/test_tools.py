@@ -115,3 +115,28 @@ def test_sample_laps_are_deterministic_and_finish():
     assert all(l.result["valid"] for l in a)
     X, Y = laps_to_arrays(a, ["ray3", "speed"])
     assert len(X) == len(Y) > 100
+
+
+def test_vec_env_batches_and_auto_resets():
+    from reindeer_sdk import VecSleighEnv
+    env = VecSleighEnv(["practice-1", "practice-2", "practice-1"])
+    obs = env.reset()
+    assert obs.shape == (3, 8)
+    assert env.envs[0].geo is env.envs[2].geo  # geometry shared per track
+    done_seen = False
+    for _ in range(800):  # reversing into a wall never finishes; 2-minute timeout = 2400 decisions, so cap it
+        obs, rew, done, infos = env.step(np.tile([0.0, 1.0], (3, 1)))
+        assert obs.shape == (3, 8) and rew.shape == (3,)
+        done_seen |= bool(done.any())
+    assert np.isfinite(obs).all()
+
+
+def test_render_replay_writes_png(tmp_path):
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    from reindeer_sdk import render_replay
+    from reindeer_sdk.samples import sample_lap
+    out = tmp_path / "lap.png"
+    render_replay(sample_lap("practice-2", 1), out)
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

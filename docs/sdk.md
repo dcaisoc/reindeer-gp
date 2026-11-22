@@ -69,6 +69,12 @@ No PyTorch? `reindeer_sdk.train.train_mlp(X, Y, INPUTS, hidden=(32, 32))` is a s
 
 `reindeer_sdk.env.SleighEnv(track_id, inputs)` is a Gymnasium-style environment: `reset(seed) → (obs, info)` and `step(action) → (obs, reward, terminated, truncated, info)`, deciding at 20 Hz like submitted bots. Reward: +1 per checkpoint, +10 for finishing, −1 per wall hit, −0.01 per step. Shape your own reward from `info` if you prefer.
 
+`reindeer_sdk.VecSleighEnv(tracks, inputs)` runs a batch of sleighs (for example `["practice-1", "practice-2"] * 8`): `reset() → obs[n, inputs]`, `step(actions[n, 2]) → (obs, rewards, dones, infos)`, restarting finished sleighs automatically like Stable-Baselines3's VecEnv. Expect about 10,000 decisions a second per core.
+
+**Seeing what happened**
+
+`render_replay(replay, "lap.png")` draws the track from above with the sleigh's path coloured by speed and wall hits marked (needs matplotlib). To watch a replay move, import the `.rgpr` file in the web app under **Driving data**.
+
 **Talking to the server**
 
 `reindeer_sdk.api.Client(url=None, token=None)`: `me()`, `validate(bot)`, `submit(bot, tracks=None)`, `submission(id)`, `wait(id)`, `board(track, kind="bots")`. Errors raise `ApiError` with a plain-English message.

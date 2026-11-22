@@ -15,14 +15,16 @@ from .export import bot_from_layers, from_torch, save_bot
 from .replay import Replay, decode_replay, encode_replay, load_replay
 from .run import Recorder, extract_training_pairs, run_policy, simulate_replay
 from .sim import Observation, ReindeerGame, TrackGeometry
+from .render import render_replay
 from .tracks import TRACK_IDS, list_tracks, load_track
+from .vec_env import VecSleighEnv
 
 __version__ = "0.3.0"
 
 __all__ = [
     "CompiledBot", "DEFAULT_CONFIG", "ENGINE_VERSION", "InvalidBot", "Observation", "Recorder", "ReindeerGame", "Replay",
-    "TRACK_IDS", "TrackGeometry", "baseline_policy", "bot_from_layers", "can_mirror", "count_params", "decode_replay",
+    "TRACK_IDS", "TrackGeometry", "VecSleighEnv", "baseline_policy", "bot_from_layers", "can_mirror", "count_params", "decode_replay",
     "encode_replay", "evaluate_bot", "extract_training_pairs", "from_torch", "input_names", "is_trainer_architecture",
-    "laps_to_arrays", "list_tracks", "load_bot", "load_laps", "load_replay", "load_track", "make_config", "run_policy",
+    "laps_to_arrays", "list_tracks", "load_bot", "load_laps", "load_replay", "load_track", "make_config", "render_replay", "run_policy",
     "save_bot", "simulate_replay", "tuned_policy", "validate_bot", "__version__",
 ]

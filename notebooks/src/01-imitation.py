@@ -138,10 +138,11 @@ for t in rgp.TRACK_IDS:
 rgp.save_bot(bot, "my-bot.json")
 
 # %%
-# Save a replay to watch: web app → Driving data → Import replay files (or the replay viewer's "Load replay file").
+# Where does it slow down, and where does it hit walls? (red crosses)
 rep = rgp.evaluate_bot(rgp.load_track(TRACK), bot)
+rgp.render_replay(rep); plt.show()
+# To watch it move: save the replay and open it in the web app (Driving data → Import replay files).
 Path("my-bot-replay.rgpr").write_bytes(rgp.encode_replay(rep))
-print("Saved my-bot-replay.rgpr")
 
 # %% [markdown]
 # ## 5. Submit

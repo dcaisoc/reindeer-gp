@@ -115,6 +115,7 @@ for t in rgp.TRACK_IDS:
     r = rgp.evaluate_bot(rgp.load_track(t), bot).result
     print(f"{t:<12} " + (f"{r['score']:.2f} s ({r['penalties']} penalties)" if r["valid"] else f"did not finish ({r['ticks'] / 60:.0f} s)"))
 rgp.save_bot(bot, "evolved-bot.json")
+rgp.render_replay(rgp.evaluate_bot(rgp.load_track("practice-3"), bot)); plt.show()
 
 # %% [markdown]
 # ## Where to go from here
@@ -123,5 +124,5 @@ rgp.save_bot(bot, "evolved-bot.json")
 # - **Start from imitation:** use the weights of a bot from notebook 01 as generation zero (match the sizes).
 # - **A better fitness:** reward distance along the track between checkpoints; punish slow laps harder.
 # - **Proper reinforcement learning:** `reindeer_sdk.env.SleighEnv` is a Gymnasium-style environment
-#   (reset/step) for PPO, SAC and friends. Export with `rgp.bot_from_layers` or `rgp.from_torch`.
+#   (reset/step) for PPO, SAC and friends, and `rgp.VecSleighEnv` races many sleighs in one batch. Export with `rgp.bot_from_layers` or `rgp.from_torch`.
 # - Whatever you build, submit it with `reindeer submit evolved-bot.json`.

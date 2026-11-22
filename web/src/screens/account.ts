@@ -126,6 +126,7 @@ export function teamScreen(): Screen {
                 ))))
           : h('p', { class: 'muted' }, 'Nothing yet. Train a bot, or submit one of your laps to the Human board from Driving data.'),
       ),
+      uploadCard(),
       tokensCard(),
       profile,
       dangerZone(),
@@ -176,6 +177,51 @@ export function teamScreen(): Screen {
   }
 
   /** Personal API tokens for the `reindeer` command-line tool and notebooks. */
+  function uploadCard(): HTMLElement {
+    const out = h('div', { 'aria-live': 'polite' });
+    const file = h('input', { type: 'file', id: 'bot-file', accept: '.json,application/json' }) as HTMLInputElement;
+    const send = h('button', { class: 'btn btn-primary small', disabled: true }, 'Submit to every track') as HTMLButtonElement;
+    let bot: unknown = null;
+    file.onchange = async () => {
+      bot = null;
+      send.disabled = true;
+      const f = file.files?.[0];
+      if (!f) return out.replaceChildren();
+      try {
+        bot = JSON.parse(await f.text());
+      } catch {
+        return out.replaceChildren(h('p', { class: 'error-text' }, `${f.name} is not a JSON file.`));
+      }
+      const v = await api.post<{ ok: boolean; errors: string[]; params: number }>('/bots/validate', bot);
+      if (!v.ok) {
+        bot = null;
+        return out.replaceChildren(h('p', { class: 'error-text' }, `${f.name} has ${v.errors.length === 1 ? 'a problem' : 'problems'}:`), h('ul', {}, v.errors.map((e) => h('li', {}, e))));
+      }
+      out.replaceChildren(h('p', {}, `\u2713 ${f.name} is a valid bot (${v.params} parameters).`));
+      send.disabled = false;
+    };
+    send.onclick = async () => {
+      if (!bot) return;
+      send.disabled = true;
+      try {
+        const r = await api.post<{ submissions: { id: string }[] }>('/submissions', { bot });
+        toast(`Submitted to ${r.submissions.length} track${r.submissions.length === 1 ? '' : 's'}. Results appear under Submissions in a minute.`);
+        render();
+      } catch (e) {
+        send.disabled = false;
+        const msg = e instanceof ApiError && e.code === 'invalid_bot' ? `${e.message} ${(e.details.errors as string[]).join(' ')}` : e instanceof Error ? e.message : String(e);
+        toast(msg, 'error');
+      }
+    };
+    return h('section', { class: 'card' },
+      h('h2', {}, 'Submit a bot file'),
+      h('p', { class: 'muted small' }, 'Trained in a notebook or anywhere else? Upload the ', h('code', {}, '.json'), ' bot file here. It is checked before it is sent. ',
+        h('a', { href: 'https://dcaisoc.github.io/reindeer-gp/formats/bot/', target: '_blank', rel: 'noopener' }, 'Bot file format')),
+      h('p', {}, h('label', { for: 'bot-file' }, 'Bot file '), file, ' ', send),
+      out,
+    );
+  }
+
   function tokensCard(): HTMLElement {
     const list = h('ul', { class: 'token-list' });
     const shown = h('div', { 'aria-live': 'polite' });
