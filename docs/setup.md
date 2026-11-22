@@ -73,6 +73,19 @@ Merge the PR with the database ids. The *Deploy* workflow applies the database m
 
 If Raven sign-in fails with "unverified app" or an admin-approval message, the Cambridge Google Workspace may restrict third-party apps. Email raven-support with the client id and ask for it to be allowed. Test this early: it is the one external dependency we don't control.
 
+## Backups, load tests and restores
+
+Three more repository secrets (GitHub → Settings → Secrets and variables → Actions → *New repository secret*):
+
+| Secret | Value | Used by |
+| --- | --- | --- |
+| `BACKUP_PASSPHRASE` | A long random string (`openssl rand -base64 32`). **Keep a copy in a password manager**: without it, backups can't be decrypted. | Nightly backup, Restore database |
+| `DEV_LOGIN_KEY` | The same value you gave staging's `DEV_LOGIN_KEY` Wrangler secret | Load test (staging) |
+
+Optional repository *variables* (same page, *Variables* tab): `STAGING_URL` and `PRODUCTION_URL`, if your sites aren't at `reindeer-gp-staging.dcaisoc.workers.dev` and `reindeer-gp.dcaisoc.workers.dev`.
+
+Then, once: Actions → **Nightly backup** → Run workflow; Actions → **Load test (staging)** → Run workflow; Actions → **Restore database** → Run workflow (defaults). All three should finish green. From then on backups run every night; the [runbook](runbook.md#backups-and-restoring) says when to run the others.
+
 ## Day to day
 
 | I want to… | Do this |
@@ -80,7 +93,7 @@ If Raven sign-in fails with "unverified app" or an admin-approval message, the C
 | Try a PR on staging | Add the `preview` label to it |
 | Release to players | Actions → Deploy → Run workflow → production, then approve |
 | Roll back | Cloudflare dashboard → Workers → reindeer-gp → Deployments → previous version → *Deploy*; or re-run the production deploy from an older commit |
-| Back up the database | `npx wrangler d1 export reindeer-gp --remote --output backup.sql` (D1 also keeps 7 days of point-in-time history on the free plan) |
+| Back up the database | Automatic every night (*Nightly backup* workflow). By hand: `npx wrangler d1 export reindeer-gp --remote --output backup.sql`. D1 also keeps 7 days of point-in-time history. |
 | Run everything locally | `npm run dev` → <http://localhost:8000>, with test sign-in (no Raven locally). `REFEREE_EMAILS=you@cam.ac.uk npm run dev` shows the referee page |
 | See whether free limits are close | Cloudflare dashboard → Workers → reindeer-gp → Metrics (requests per day; the free plan allows 100,000) |
 | Move to the $5 plan if limits bite | Cloudflare dashboard → Workers → Plans → Paid. No code change |

@@ -19,6 +19,7 @@ export const notFound = (what = 'That') => new HttpError(404, 'not_found', `${wh
 const SECURITY_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
+  'x-frame-options': 'SAMEORIGIN',
 };
 
 export function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {

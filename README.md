@@ -4,7 +4,7 @@ A Christmas machine-learning competition for Cambridge students. Drive a sleigh 
 
 This repository holds the whole system: the deterministic game engine, the browser app, the tracks, the server, the Python SDK and the notebooks.
 
-**Status:** milestone M4. Drive, train in the browser or in Python, and race on live leaderboards, plus scheduled weekly twists (night mode, ice, reversed tracks), the baseline bot and leader ghosts on every board, badges, team and college standings, and a weekly digest. Documentation: <https://dcaisoc.github.io/reindeer-gp/>. Going live: [docs/setup.md](docs/setup.md).
+**Status:** milestone M5, complete. Drive, train in the browser or in Python, and race on live leaderboards, with weekly twists, badges, standings, replay clips (GIF/video), accessibility (keyboard, WCAG AA contrast, reduced motion, driving assists), nightly integrity checks and encrypted backups. Documentation: <https://dcaisoc.github.io/reindeer-gp/>. Running the event: [runbook](docs/runbook.md) · [if something breaks](docs/if-something-breaks.md) · [handover](docs/handover.md).
 
 ## Quick start (5 minutes)
 

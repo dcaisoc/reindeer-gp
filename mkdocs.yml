@@ -47,4 +47,8 @@ nav:
   - Organisers:
       - Going live: setup.md
       - Runbook: runbook.md
+      - If something breaks: if-something-breaks.md
+      - Referee rehearsal: rehearsal.md
+      - Security checklist: security.md
+      - Handover note: handover.md
       - Adding a new game: new-game.md
