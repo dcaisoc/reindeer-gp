@@ -16,6 +16,7 @@ import { getLap, lapReplay, listLaps, type LapRecord } from '../store.js';
 import { ensureCourse, ensureCourseForReplay, geometry, sectorTimes } from '../tracks.js';
 import { download, fmtDate, fmtDelta, fmtTime, h, toast, type Screen } from '../ui.js';
 import { api } from '../api.js';
+import { exportGif, exportVideo, videoMime } from '../clip.js';
 
 const GHOST_COLOURS = ['#2b6cb0', '#6b46c1', '#2f855a'];
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
@@ -205,6 +206,7 @@ function viewer(main: Loaded): Screen {
       main.bytes ? h('button', { class: 'btn', onclick: () => download(main.bytes!, `${track.id}-replay.rgpr`) }, 'Download') : null,
       fileButton(),
     ),
+    clipPanel(),
   );
 
   const stage = h('div', { class: 'viewer-stage' }, canvas, banner);
@@ -213,6 +215,48 @@ function viewer(main: Loaded): Screen {
     playBtn, timeEl, scrub, speedSel, camBtn, raysBtn, traceBtn, cpBtn,
   );
   const el = h('main', { class: 'viewer' }, stage, side, controls);
+
+  /** "Export clip": a few seconds from the current moment, as a GIF (anywhere) or a video (where supported). */
+  function clipPanel(): HTMLElement {
+    const len = h('select', { id: 'clip-len', 'aria-label': 'Clip length' }, [3, 5, 8, 12].map((n) => h('option', { value: String(n), selected: n === 5 }, `${n} s`))) as HTMLSelectElement;
+    const status = h('p', { class: 'muted small clip-status', 'aria-live': 'polite' });
+    const vmime = videoMime();
+    let busy = false;
+    const src = () => ({ track, frames: primary.frames, collisions: primary.collisions, title: main.title });
+    const name = (ext: string) => `${track.id}-${slugify(main.title)}-${Math.floor(tick / 60)}s.${ext}`;
+    const run = async (kind: 'gif' | 'video', btn: HTMLButtonElement) => {
+      if (busy) return;
+      busy = true;
+      btn.disabled = true;
+      const wasPlaying = playing;
+      setPlaying(false);
+      try {
+        const opts = { startTick: Math.floor(tick), seconds: Number(len.value), onProgress: (t: string) => (status.textContent = t) };
+        if (kind === 'gif') {
+          const bytes = await exportGif(src(), opts);
+          download(bytes, name('gif'));
+          status.textContent = `GIF ready (${Math.round(bytes.length / 1024)} KB): check your downloads.`;
+        } else {
+          const { blob, ext } = await exportVideo(src(), opts);
+          download(new Uint8Array(await blob.arrayBuffer()), name(ext));
+          status.textContent = `Video ready (${Math.round(blob.size / 1024)} KB): check your downloads.`;
+        }
+      } catch (e) {
+        status.textContent = e instanceof Error ? e.message : String(e);
+      } finally {
+        busy = false;
+        btn.disabled = false;
+        if (wasPlaying) setPlaying(true);
+      }
+    };
+    const gifBtn = h('button', { class: 'btn', onclick: () => run('gif', gifBtn as HTMLButtonElement) }, 'Make GIF') as HTMLButtonElement;
+    const vidBtn = vmime ? (h('button', { class: 'btn', onclick: () => run('video', vidBtn as HTMLButtonElement) }, `Make video (${vmime.includes('mp4') ? 'MP4' : 'WebM'})`) as HTMLButtonElement) : null;
+    return h('section', { class: 'clip-export', 'aria-label': 'Export a clip' },
+      h('h2', {}, 'Export a clip'),
+      h('p', { class: 'muted small' }, 'A short clip starting where the replay is now: pause on your best moment (or worst crash) first.'),
+      h('div', { class: 'actions' }, len, gifBtn, vidBtn),
+      status);
+  }
 
   async function share(): Promise<void> {
     const r = main.remote!;
@@ -446,4 +490,8 @@ async function thumbnailPng(track: TrackDef, frames: Frame[]): Promise<Blob> {
   } finally {
     holder.remove();
   }
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'replay';
 }
