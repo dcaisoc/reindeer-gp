@@ -26,7 +26,9 @@
     "dev:pages": "node scripts/build-web.mjs --serve",
     "sdk:sync": "node scripts/sync-sdk-data.mjs",
     "test:sdk": "cd sdk && python3 -m pytest -q",
-    "digest": "node scripts/digest.mjs"
+    "digest": "node scripts/digest.mjs",
+    "loadtest": "node scripts/loadtest.mjs",
+    "loadtest:local": "tsx scripts/loadtest-local.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

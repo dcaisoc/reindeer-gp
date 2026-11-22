@@ -31,6 +31,8 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
+      - name: Load test, in-process (60 players in 30 s; the full 200-player test runs against staging)
+        run: npm run loadtest:local -- --users 60 --minutes 0.5
       - name: Golden traces (Node)
         run: npm run test:golden
       - name: Track validator
