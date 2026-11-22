@@ -49,6 +49,8 @@ export interface Me {
 
 export interface MeResponse {
   user: Me | null;
+  /** True when the server could not be reached (offline, or pages served without the API). */
+  noServer?: boolean;
   ravenConfigured?: boolean;
   devLogin?: boolean;
 }
@@ -57,7 +59,7 @@ let meCache: Promise<MeResponse> | null = null;
 
 /** Who is signed in (cached until refreshMe()). Never throws: offline counts as signed out. */
 export function getMe(): Promise<MeResponse> {
-  if (!meCache) meCache = api.get<MeResponse>('/me').catch(() => ({ user: null }));
+  if (!meCache) meCache = api.get<MeResponse>('/me').catch(() => ({ user: null, noServer: true }));
   return meCache;
 }
 

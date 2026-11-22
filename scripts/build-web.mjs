@@ -1,10 +1,12 @@
-// Build the web app into dist/ with esbuild. `--serve` starts a local dev server
-// on http://localhost:8000 that rebuilds on every change.
+// Build the web app into dist/ with esbuild.
+//   --watch  rebuild on every change (used by `npm run dev`, which also runs the API)
+//   --serve  pages only on http://localhost:8001, no API (rarely needed)
 import * as esbuild from 'esbuild';
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 
 const serve = process.argv.includes('--serve');
-const dev = serve || process.argv.includes('--dev');
+const watch = serve || process.argv.includes('--watch');
+const dev = watch || process.argv.includes('--dev');
 const out = 'dist';
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -24,11 +26,14 @@ const options = {
   logLevel: 'info',
 };
 
-if (serve) {
+if (watch) {
   const ctx = await esbuild.context(options);
+  await ctx.rebuild();
   await ctx.watch();
-  const { port } = await ctx.serve({ servedir: out, port: 8000 });
-  console.log(`Reindeer Grand Prix running at http://localhost:${port}`);
+  if (serve) {
+    const { port } = await ctx.serve({ servedir: out, port: 8001 });
+    console.log(`Pages only (no sign-in, no leaderboards) at http://localhost:${port}`);
+  } else console.log('Watching web/ and engine/ for changes…');
 } else {
   const r = await esbuild.build({ ...options, metafile: true });
   const bytes = Object.values(r.metafile.outputs).reduce((s, o) => s + o.bytes, 0);

@@ -1,6 +1,6 @@
 # One-command shortcuts. Everything is also available as `npm run <script>`.
 .PHONY: dev test ci browsers
-dev:          ## install and start the app at http://localhost:8000
+dev:          ## install and run the whole system at http://localhost:8000 (test sign-in, no Raven)
 	npm install
 	npm run dev
 test:
