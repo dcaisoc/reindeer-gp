@@ -12,14 +12,22 @@ const corpus = readdirSync('engine/golden/corpus')
   .filter((f) => f.endsWith('.json'))
   .sort()
   .map((f) => ({ name: f, replay: JSON.parse(readFileSync(`engine/golden/corpus/${f}`, 'utf8')) }));
+const botCases = readdirSync('engine/golden/bots')
+  .filter((f) => f.endsWith('.json'))
+  .sort()
+  .map((f) => ({ name: f, golden: JSON.parse(readFileSync(`engine/golden/bots/${f}`, 'utf8')) }));
 const tracks = Object.fromEntries(
   ['practice-1', 'practice-2', 'practice-3'].map((id) => [id, JSON.parse(readFileSync(`tracks/${id}.json`, 'utf8'))]),
 );
 
 const bundle = await esbuild.build({
   stdin: {
-    contents: `import { checkCorpus } from './engine/golden/check.ts';
-      window.__golden = (c, t) => checkCorpus(c, t);`,
+    contents: `import { checkBots, checkCorpus } from './engine/golden/check.ts';
+      window.__golden = (c, b, t) => {
+        const a = checkCorpus(c, t);
+        const z = checkBots(b, t);
+        return { ok: a.ok && z.ok, failures: a.failures + z.failures, lines: [...a.lines, ...z.lines] };
+      };`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -51,12 +59,12 @@ for (const [name, type] of engines) {
   const page = await browser.newPage();
   await page.addScriptTag({ content: code });
   const report = (await page.evaluate(
-    ([c, t]) => (window as unknown as { __golden: (a: unknown, b: unknown) => { ok: boolean; failures: number; lines: string[] } }).__golden(c, t),
-    [corpus, tracks] as const,
+    ([c, b, t]) => (window as unknown as { __golden: (a: unknown, b: unknown, c: unknown) => { ok: boolean; failures: number; lines: string[] } }).__golden(c, b, t),
+    [corpus, botCases, tracks] as const,
   )) as { ok: boolean; failures: number; lines: string[] };
   const version = browser.version();
   await browser.close();
-  if (report.ok) console.log(`✓ ${name} ${version}: all ${corpus.length} golden traces match`);
+  if (report.ok) console.log(`✓ ${name} ${version}: all ${corpus.length + botCases.length} golden traces match`);
   else {
     failed = true;
     console.log(`✗ ${name} ${version}: ${report.failures} failed`);
