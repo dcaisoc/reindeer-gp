@@ -25,11 +25,11 @@
     "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.0",
     "playwright": "^1.63.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0",
+    "typescript": "^7.0.2",
     "wrangler": "^4.50.0"
   }
 }
