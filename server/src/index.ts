@@ -11,6 +11,7 @@ import { HttpError, Router, errorResponse, json, notFound } from './http.js';
 import * as replays from './replays.js';
 import * as subs from './submissions.js';
 import * as teams from './teams.js';
+import * as tokens from './tokens.js';
 import { processQueue } from './evaluate.js';
 import { kickEvaluator } from './submissions.js';
 
@@ -27,6 +28,9 @@ function routes(env: Env, ctx?: Ctx): Router {
     .on('GET', '/api/v1/me', (req) => auth.me(env, req))
     .on('PATCH', '/api/v1/me', (req) => auth.updateMe(env, req))
     .on('DELETE', '/api/v1/me', (req) => auth.deleteMe(env, req))
+    .on('GET', '/api/v1/me/tokens', (req) => tokens.listTokens(env, req))
+    .on('POST', '/api/v1/me/tokens', (req) => tokens.createToken(env, req))
+    .on('DELETE', '/api/v1/me/tokens/:id', (req, p) => tokens.revokeToken(env, req, p.id))
     .on('GET', '/api/v1/auth/raven/start', (req) => auth.ravenStart(env, req))
     .on('GET', '/api/v1/auth/raven/callback', (req) => auth.ravenCallback(env, req))
     .on('POST', '/api/v1/auth/dev', (req) => auth.devLogin(env, req))
@@ -67,6 +71,7 @@ export async function handle(req: Request, env: Env, ctx?: Ctx): Promise<Respons
   const isApi = url.pathname.startsWith('/api/');
   try {
     if (isApi) auth.checkOrigin(req);
+    if (isApi && tokens.bearer(req)) tokens.checkTokenRoute(req);
     const m = routes(env, ctx).match(req.method, url.pathname);
     if (m) return await m.handler(req, m.params);
     if (isApi) throw notFound('That API endpoint');

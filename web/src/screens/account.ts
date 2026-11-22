@@ -126,6 +126,7 @@ export function teamScreen(): Screen {
                 ))))
           : h('p', { class: 'muted' }, 'Nothing yet. Train a bot, or submit one of your laps to the Human board from Driving data.'),
       ),
+      tokensCard(),
       profile,
       dangerZone(),
     );
@@ -172,6 +173,47 @@ export function teamScreen(): Screen {
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Join team'),
       ),
     );
+  }
+
+  /** Personal API tokens for the `reindeer` command-line tool and notebooks. */
+  function tokensCard(): HTMLElement {
+    const list = h('ul', { class: 'token-list' });
+    const shown = h('div', { 'aria-live': 'polite' });
+    const label = h('input', { id: 'token-label', maxlength: '40', placeholder: 'e.g. my laptop' });
+    const load = async () => {
+      const { tokens } = await api.get<{ tokens: { id: string; label: string; createdAt: string; lastUsedAt: string | null }[] }>('/me/tokens');
+      list.replaceChildren(...(tokens.length ? tokens.map((t) => h('li', {},
+        `${t.label} · created ${fmtDate(t.createdAt)} · ${t.lastUsedAt ? `last used ${fmtDate(t.lastUsedAt)}` : 'never used'} `,
+        h('button', { class: 'btn small danger', onclick: async () => {
+          await api.del(`/me/tokens/${t.id}`);
+          toast('Token revoked. Anything using it will stop working.');
+          load();
+        } }, 'Revoke'))) : [h('li', { class: 'muted' }, 'No tokens yet.')]));
+    };
+    const card = h('section', { class: 'card' },
+      h('h2', {}, 'API tokens (for Python and the command line)'),
+      h('p', { class: 'muted small' }, 'Reindeer and Santa teams can submit bots from Python with ', h('code', {}, 'reindeer submit bot.json'), '. A token can only submit bots and read results: it can\u2019t change your team or account. Keep it secret, like a password.'),
+      h('p', {}, h('label', { for: 'token-label' }, 'Label '), label, ' ',
+        h('button', { class: 'btn small', onclick: async () => {
+          try {
+            const t = await api.post<{ token: string; label: string }>('/me/tokens', { label: label.value });
+            label.value = '';
+            const code = h('code', { class: 'token-value' }, t.token);
+            shown.replaceChildren(h('div', { class: 'hint' },
+              h('strong', {}, `New token "${t.label}": copy it now, it won\u2019t be shown again.`), h('br'), code, ' ',
+              h('button', { class: 'btn small', onclick: async () => {
+                await navigator.clipboard?.writeText(t.token).catch(() => undefined);
+                toast('Token copied. Run `reindeer login` and paste it.');
+              } }, 'Copy')));
+            load();
+          } catch (e) {
+            toast(e instanceof Error ? e.message : String(e), 'error');
+          }
+        } }, 'Create token')),
+      shown, list,
+    );
+    load().catch(() => undefined);
+    return card;
   }
 
   function profileCard(displayName: string): HTMLElement {

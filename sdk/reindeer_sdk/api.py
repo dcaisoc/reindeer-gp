@@ -68,9 +68,14 @@ class Client:
                 err = json.loads(e.read()).get("error", {})
             except ValueError:
                 err = {}
-            raise ApiError(e.code, err.get("code", "error"), err.get("message", f"HTTP {e.code}"), err.get("details")) from None
+            msg = err.get("message", f"HTTP {e.code}")
+            if e.code == 401 and self.token:
+                msg = "Your API token was not accepted (it may have been revoked). Create a new one on your Team page, then run `reindeer login`."
+            raise ApiError(e.code, err.get("code", "error"), msg, err.get("details")) from None
         except urllib.error.URLError as e:
             raise ApiError(0, "offline", f"Can't reach {self.url} ({e.reason}).") from None
+        except (TimeoutError, OSError) as e:
+            raise ApiError(0, "offline", f"No answer from {self.url} ({e}). Check your connection and try again.") from None
 
     def me(self) -> dict[str, Any] | None:
         return self._request("GET", "/me").get("user")
