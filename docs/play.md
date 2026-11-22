@@ -41,6 +41,33 @@ You can submit **20 times per team per day**. The leaderboard keeps your best en
 
 **Human board.** Your own driving can go on the Human leaderboard too: on **Driving data**, choose *Submit to Human board*. The server re-simulates the replay, so it's just as trustworthy as a bot's score.
 
+## Weekly twists
+
+Every week or so a **twist** opens: a familiar track changed in some way. It might be night (only 3 short headlamp sensors), ice on the hairpins, or the track driven backwards. Each twist has its own boards and shows on the home page while it's open.
+
+- Drive it, then train a bot on it: the trainer shows exactly the sensors the twist gives you. Your laps on other tracks still count as training data, because the sensors are re-read the twist's way.
+- When you submit, your bot is entered on every live twist its sensors fit (a 7-ray bot can't race at night; a 3-ray bot can).
+- When a twist ends, its boards stay up.
+
+## Baseline, ghosts and badges
+
+Every board shows the **baseline bot**, a few hand-written rules, as a grey reference row. It finishes but isn't fast. **Race the leader** on any board lets you drive against the current leader's lap as a ghost; while driving, press **G** to switch between your best lap, the baseline and no ghost.
+
+Badges are awarded automatically and shown on your team page:
+
+| Badge | How |
+| --- | --- |
+| 🛷 First Lap | Drive a complete lap yourself (saved to your account and verified). |
+| ✨ Clean Lap | Finish a lap, driving or bot, without touching a wall. |
+| 🎯 Beat the Baseline | A bot of yours beats the baseline bot's time on the same track. |
+| 🔭 Less Is More | Beat the baseline with a bot using 4 sensors or fewer. |
+| 🌀 Twist Tamer | A bot of yours finishes a weekly twist. |
+| 👑 Grinch Slayer | Take first place on a Bots board from another team. |
+
+## Standings
+
+On the Bots board of every public track and every twist, the top six teams score **10, 7, 5, 3, 2 and 1 points**. **Team standings** add these up (ties go to more first places). **College standings** add up each college's **best 3 teams**, so a college can't win just by entering more teams; "Mixed / none" teams score only for themselves. Human boards are for glory and don't score points.
+
 ## Rules
 
 1. Bots must be files in the [bot format](formats/bot.md): a small network (up to 5,000 parameters) that decides from the sensors alone. No other code runs on the server.

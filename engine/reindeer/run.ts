@@ -16,6 +16,8 @@ export class Recorder {
   private actions: number[] = [];
   readonly hashes: string[] = [];
   private held: [number, number] = [0, 0];
+  /** Set for runs on a weekly twist; recorded in the replay header. */
+  twist: { id: string; version: string } | null = null;
 
   constructor(
     readonly track: TrackDef,
@@ -51,7 +53,7 @@ export class Recorder {
       game: GAME_ID,
       engineVersion: ENGINE_VERSION,
       track: { id: this.track.id, version: this.track.trackVersion },
-      twist: null,
+      twist: this.twist,
       seed,
       ticksPerAction: this.ticksPerAction,
       participants: [this.participant],
@@ -168,9 +170,10 @@ export function runPolicy(
   track: TrackDef,
   policy: Policy,
   participant: ReplayParticipant,
-  opts: { cfg?: EngineConfig; ticksPerAction?: number; geo?: TrackGeometry } = {},
+  opts: { cfg?: EngineConfig; ticksPerAction?: number; geo?: TrackGeometry; twist?: { id: string; version: string } | null } = {},
 ): Replay {
   const rec = new Recorder(track, opts.ticksPerAction ?? 3, participant, opts.cfg, opts.geo);
+  rec.twist = opts.twist ?? null;
   let a: [number, number] = [0, 0];
   while (!rec.game.isDone()) {
     if (rec.needsAction) {

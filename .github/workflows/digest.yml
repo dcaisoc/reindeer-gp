@@ -1,0 +1,36 @@
+name: Weekly digest
+
+# Every Monday at 09:00 UK time (UTC in winter), fetch the digest from
+# production and post it as this run's summary, ready to copy into the group chat.
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Days to cover
+        default: "7"
+
+permissions:
+  contents: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Build the digest
+        run: node scripts/digest.mjs --url "${{ vars.PRODUCTION_URL || 'https://reindeer-gp.dcaisoc.workers.dev' }}" --days "${{ inputs.days || '7' }}" > digest.md
+      - name: Show it on the run page
+        run: |
+          echo '**Copy the text below into the group chat.**' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          cat digest.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest
+          path: digest.md
+          retention-days: 30

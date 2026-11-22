@@ -18,15 +18,17 @@ BOTS = sorted(GOLDEN.joinpath("bots").iterdir(), key=lambda p: p.name)
 
 @pytest.mark.parametrize("path", CORPUS, ids=lambda p: p.name)
 def test_golden_replays(path):
+    from reindeer_sdk.twist import course_of_replay
     rep = replay_from_json(json.loads(path.read_text("utf-8")))
-    out = simulate_replay(load_track(rep.track_id), rep)
+    c = course_of_replay(rep)
+    out = simulate_replay(c.track, rep, c.cfg)
     assert out.matches, f"diverges near tick {(out.first_mismatch + 1) * 60}"
 
 
 @pytest.mark.parametrize("path", BOTS, ids=lambda p: p.name)
 def test_golden_bots(path):
     g = json.loads(path.read_text("utf-8"))
-    rep = evaluate_bot(load_track(g["track"]), g["bot"])
+    rep = evaluate_bot(g.get("twist") or g["track"], g["bot"])
     assert rep.header["hashes"] == g["hashes"]
     assert rep.header["finalHash"] == g["finalHash"]
 

@@ -14,7 +14,29 @@ Sign in with a Raven account listed in the `REFEREE_EMAILS` secret, then click *
 | Tell everyone something | Write it under **Announcements** and **Post**. It shows at the top of every page; **Remove** takes it down. |
 | Remove a suspicious or offensive entry | **Leaderboard entries** → **Hide**. The team keeps its other entries. |
 | Fix an inappropriate team name | **Teams** → **Rename** (or **Hide** to remove the team from every board). |
-| Get the results for prizes | **Download results (CSV)**: every board entry, including hidden ones, with college and level. |
+| Get the results for prizes | **Download results (CSV)**: every board entry, including hidden ones, with college and level. Points and college standings are on the public **Standings** page. |
+
+## Twist day
+
+Weekly twists open and close on their own. A week ahead:
+
+1. **Upload**: Referee page → *Weekly twists* → *Upload twist file* (from `tracks/twists/` or a private folder). Problems are listed in plain English. The upload shows the baseline bot's time; if it doesn't finish, the twist is too hard.
+2. **Test drive**: drive it yourself (only referees can see it before it opens).
+3. **Dry run**: races every team's latest bot on it privately. Expect many "can't race here" notes on a twist with different sensors; that's the point. Nothing public changes.
+4. **Schedule**: set *Opens* (and optionally *Closes*) and *Save schedule*. Times are in your computer's time zone.
+
+At the opening time the twist appears on the home page, gets its own boards, and an announcement goes up automatically (checked every 10 minutes even if nobody visits). Players' bots aren't entered automatically: they submit as usual, and every bot is entered on each live twist its sensors fit.
+
+| I want to… | Do this |
+| --- | --- |
+| Open it early | **Go live now** (an override; *Follow schedule* removes it) |
+| Close it early | **Take down now**. Its boards and replays stay, marked as ended. |
+| Fix a mistake before it opens | Upload the corrected file with the same id (or **Delete** it) |
+| Fix a mistake after it opened | You can't replace it (boards would mix versions). Take it down and upload the fix under a new id, e.g. `night-oval-2`. |
+
+## Weekly digest
+
+Every Monday at 09:00 the *Weekly digest* workflow posts the summary on the repository's **Actions** page: open the latest run and copy it into the group chat. Or press **Build digest** on the Referee page any time, or run `npm run digest`. It covers leaders, new records, the biggest climbers, the crash of the week, badges and the college standings.
 
 ## Kickoff checklist (the day before)
 

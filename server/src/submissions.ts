@@ -12,7 +12,8 @@ import { getSetting } from './audit.js';
 import { requireTeam } from './auth.js';
 import type { Env } from './env.js';
 import { HttpError, bad, json, notFound, readBody, readJson } from './http.js';
-import { TRACKS, boardKey, track } from './tracks.js';
+import { courseBoardKey, type Course } from './tracks.js';
+import { courseFor, liveCourses } from './twists.js';
 import { newId, nowIso, startOfUkDay } from './util.js';
 
 const MAX_BOT_BYTES = 200 * 1024;
@@ -37,7 +38,10 @@ async function requireOpen(env: Env): Promise<void> {
 /** POST /api/v1/bots/validate — check a bot without submitting it. */
 export async function validateBotEndpoint(env: Env, req: Request): Promise<Response> {
   const bot = await readJson<BotFile>(req, MAX_BOT_BYTES);
-  const { errors, params } = validateBotForEngine(bot);
+  const courseId = new URL(req.url).searchParams.get('track');
+  const c = courseId ? await courseFor(env, courseId) : null;
+  if (courseId && !c) throw bad(`Unknown track "${courseId}".`);
+  const { errors, params } = validateBotForEngine(bot, c?.cfg);
   return json({ ok: errors.length === 0, errors, params, trainerArchitecture: errors.length ? false : isTrainerArchitecture(bot) });
 }
 
@@ -47,10 +51,34 @@ export async function submitBot(env: Env, req: Request): Promise<Response> {
   await requireOpen(env);
   const body = await readJson<{ bot?: BotFile; tracks?: string[] }>(req, MAX_BOT_BYTES);
   const bot = body.bot;
-  const { errors, params } = validateBotForEngine(bot);
-  if (errors.length) throw new HttpError(422, 'invalid_bot', 'The bot file has problems.', { errors });
-  const trackIds = body.tracks?.length ? body.tracks : TRACKS.map((t) => t.id);
-  for (const id of trackIds) if (!track(id)) throw bad(`Unknown track "${id}".`);
+  // Which courses: the ones asked for, or every public track and live twist this bot's sensors work on.
+  const live = await liveCourses(env);
+  let targets: Course[];
+  const skipped: { trackId: string; reason: string }[] = [];
+  let params = 0;
+  if (body.tracks?.length) {
+    targets = [];
+    for (const id of body.tracks) {
+      const c = live.find((x) => x.id === id);
+      if (!c) throw bad((await courseFor(env, id)) ? `"${id}" is not open for entries any more.` : `Unknown track "${id}".`);
+      const v = validateBotForEngine(bot, c.cfg);
+      if (v.errors.length) throw new HttpError(422, 'invalid_bot', `The bot can't race on ${c.name}.`, { errors: v.errors });
+      params = v.params;
+      targets.push(c);
+    }
+  } else {
+    const base = validateBotForEngine(bot);
+    targets = [];
+    for (const c of live) {
+      const v = c.twist ? validateBotForEngine(bot, c.cfg) : base;
+      if (v.errors.length) skipped.push({ trackId: c.id, reason: v.errors[0] });
+      else {
+        targets.push(c);
+        params = v.params;
+      }
+    }
+    if (!targets.length) throw new HttpError(422, 'invalid_bot', 'The bot file has problems.', { errors: base.errors.length ? base.errors : skipped.map((s) => s.reason) });
+  }
 
   const limit = Number(await getSetting(env, 'bot_submissions_per_day', '20'));
   const used = await env.DB.prepare('SELECT COUNT(*) AS n FROM bots WHERE team_id = ? AND created_at >= ?')
@@ -64,7 +92,7 @@ export async function submitBot(env: Env, req: Request): Promise<Response> {
   const now = nowIso();
   const r2Key = `bots/${botId}.json`;
   await blobs(env).put(r2Key, JSON.stringify(bot), { httpMetadata: { contentType: 'application/json' } });
-  const subs = trackIds.map((t) => ({ id: newId('s_'), trackId: t }));
+  const subs = targets.map((c) => ({ id: newId('s_'), trackId: c.id, boardKey: courseBoardKey(c, 'bots') }));
   await env.DB.batch([
     env.DB.prepare(
       'INSERT INTO bots (id, team_id, user_id, name, r2_key, params, inputs_json, method, trainer, trainer_arch, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -74,11 +102,11 @@ export async function submitBot(env: Env, req: Request): Promise<Response> {
     ...subs.map((s) =>
       env.DB.prepare(
         "INSERT INTO submissions (id, team_id, user_id, kind, bot_id, track_id, board_key, status, created_at) VALUES (?, ?, ?, 'bot', ?, ?, ?, 'queued', ?)",
-      ).bind(s.id, u.team_id, u.id, botId, s.trackId, boardKey(s.trackId, 'bots'), now),
+      ).bind(s.id, u.team_id, u.id, botId, s.trackId, s.boardKey, now),
     ),
   ]);
   await kickEvaluator(env);
-  return json({ botId, params, submissions: subs.map((s) => ({ id: s.id, trackId: s.trackId, status: 'queued' })) }, 202);
+  return json({ botId, params, submissions: subs.map((s) => ({ id: s.id, trackId: s.trackId, status: 'queued' })), skipped }, 202);
 }
 
 /**
@@ -101,7 +129,11 @@ export async function uploadRun(env: Env, req: Request): Promise<Response> {
   if (h.engineVersion.split('.')[0] !== ENGINE_VERSION.split('.')[0]) {
     throw new HttpError(422, 'invalid_replay', `That replay was made with engine ${h.engineVersion}; this server runs ${ENGINE_VERSION}.`);
   }
-  if (!track(h.track.id)) throw new HttpError(422, 'invalid_replay', `Unknown track "${h.track.id}".`);
+  const courseId = h.twist?.id ?? h.track.id;
+  const c = await courseFor(env, courseId);
+  if (!c) throw new HttpError(422, 'invalid_replay', `Unknown track "${courseId}".`);
+  if (c.twist && h.twist!.version !== c.twist.version) throw new HttpError(422, 'invalid_replay', `That lap was driven on another version of ${c.name}.`);
+  if (submit && c.status === 'ended') throw new HttpError(423, 'submissions_closed', `${c.name} has ended, so its boards are closed. You can still save the lap.`);
   if (h.participants[0]?.kind !== 'human' || h.ticksPerAction !== 1) throw new HttpError(422, 'invalid_replay', 'Only laps you drove yourself can be uploaded here.');
   if (rep.actions.length > 2 * 7200) throw new HttpError(422, 'invalid_replay', 'That replay is longer than the time limit.');
 
@@ -116,7 +148,7 @@ export async function uploadRun(env: Env, req: Request): Promise<Response> {
     const key = `runs/${run.id}.rgpr`;
     await blobs(env).put(key, bytes, { httpMetadata: { contentType: 'application/octet-stream' } });
     await env.DB.prepare('INSERT INTO runs (id, team_id, user_id, track_id, r2_key, final_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(run.id, u.team_id, u.id, h.track.id, key, h.finalHash, now)
+      .bind(run.id, u.team_id, u.id, courseId, key, h.finalHash, now)
       .run();
   } else if (!submit) {
     return json({ runId: run.id, submissionId: null, duplicate: true });
@@ -125,7 +157,7 @@ export async function uploadRun(env: Env, req: Request): Promise<Response> {
   await env.DB.prepare(
     'INSERT INTO submissions (id, team_id, user_id, kind, run_id, track_id, board_key, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, \'queued\', ?)',
   )
-    .bind(subId, u.team_id, u.id, submit ? 'human' : 'verify', run.id, h.track.id, submit ? boardKey(h.track.id, 'humans') : null, now)
+    .bind(subId, u.team_id, u.id, submit ? 'human' : 'verify', run.id, courseId, submit ? courseBoardKey(c, 'humans') : null, now)
     .run();
   await kickEvaluator(env);
   return json({ runId: run.id, submissionId: subId }, 202);

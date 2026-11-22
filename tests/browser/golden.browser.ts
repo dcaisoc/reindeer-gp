@@ -19,13 +19,16 @@ const botCases = readdirSync('engine/golden/bots')
 const tracks = Object.fromEntries(
   ['practice-1', 'practice-2', 'practice-3'].map((id) => [id, JSON.parse(readFileSync(`tracks/${id}.json`, 'utf8'))]),
 );
+const twists = Object.fromEntries(
+  readdirSync('tracks/twists').filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(`tracks/twists/${f}`, 'utf8'))).map((w) => [w.id, w]),
+);
 
 const bundle = await esbuild.build({
   stdin: {
     contents: `import { checkBots, checkCorpus } from './engine/golden/check.ts';
-      window.__golden = (c, b, t) => {
-        const a = checkCorpus(c, t);
-        const z = checkBots(b, t);
+      window.__golden = (c, b, t, w) => {
+        const a = checkCorpus(c, t, w);
+        const z = checkBots(b, t, w);
         return { ok: a.ok && z.ok, failures: a.failures + z.failures, lines: [...a.lines, ...z.lines] };
       };`,
     resolveDir: process.cwd(),
@@ -59,8 +62,8 @@ for (const [name, type] of engines) {
   const page = await browser.newPage();
   await page.addScriptTag({ content: code });
   const report = (await page.evaluate(
-    ([c, b, t]) => (window as unknown as { __golden: (a: unknown, b: unknown, c: unknown) => { ok: boolean; failures: number; lines: string[] } }).__golden(c, b, t),
-    [corpus, botCases, tracks] as const,
+    ([c, b, t, w]) => (window as unknown as { __golden: (a: unknown, b: unknown, c: unknown, d: unknown) => { ok: boolean; failures: number; lines: string[] } }).__golden(c, b, t, w),
+    [corpus, botCases, tracks, twists] as const,
   )) as { ok: boolean; failures: number; lines: string[] };
   const version = browser.version();
   await browser.close();

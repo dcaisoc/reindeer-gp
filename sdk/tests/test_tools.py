@@ -140,3 +140,38 @@ def test_render_replay_writes_png(tmp_path):
     out = tmp_path / "lap.png"
     render_replay(sample_lap("practice-2", 1), out)
     assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_twists_change_config_and_record_in_replays(tmp_path):
+    import reindeer_sdk as rgp
+    assert "night-oval" in rgp.bundled_twist_ids()
+    night = rgp.course("night-oval")
+    assert night.cfg["rayAnglesDeg"] == [-45, 0, 45] and night.twist == {"id": "night-oval", "version": "1.0.0"}
+    assert rgp.input_names(night.cfg)[:4] == ["ray0", "ray1", "ray2", "speed"]
+    # A 7-ray bot can't race at night; a 3-ray bot can.
+    seven = bot_from_layers([f"ray{i}" for i in range(7)], [(np.zeros((2, 7)), np.array([0.0, 1.0]), "tanh")], "seven")
+    with pytest.raises(rgp.InvalidBot):
+        rgp.evaluate_bot("night-oval", seven)
+    three = bot_from_layers(["ray0", "ray1", "ray2", "speed"], [(np.array([[-1.0, 0, 1, 0], [0, 0, 0, 0]]), np.array([0.0, 0.6]), "tanh")], "three")
+    rep = rgp.evaluate_bot("night-oval", three)
+    assert rep.header["twist"] == {"id": "night-oval", "version": "1.0.0"}
+    # Replays on twists re-simulate with the twist's track and config.
+    out = rgp.simulate_replay(night.track, rep, night.cfg)
+    assert out.matches
+
+
+def test_twist_config_merges_surfaces_per_property():
+    from reindeer_sdk import twist_config, DEFAULT_CONFIG
+    cfg = twist_config({"config": {"surfaces": {"ice": {"grip": 0.05}}, "penaltySeconds": 2}})
+    assert cfg["surfaces"]["ice"]["grip"] == 0.05
+    assert cfg["surfaces"]["ice"]["drag"] == DEFAULT_CONFIG["surfaces"]["ice"]["drag"]
+    assert cfg["penaltySeconds"] == 2 and DEFAULT_CONFIG["penaltySeconds"] == 1.0
+
+
+def test_sample_laps_on_a_twist_train_a_twist_bot():
+    import reindeer_sdk as rgp
+    from reindeer_sdk.samples import sample_laps
+    laps = sample_laps("night-oval", 2)
+    assert all(l.header["twist"]["id"] == "night-oval" and l.result["valid"] for l in laps)
+    X, Y = rgp.laps_to_arrays(laps, ["ray0", "ray1", "ray2", "speed"], mirror=True)
+    assert X.shape[1] == 4 and len(X) == len(Y)

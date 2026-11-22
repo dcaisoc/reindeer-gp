@@ -18,11 +18,18 @@ import type { TrainConfig } from '../train/mlp.js';
 import { coachingTips } from '../train/tips.js';
 import { drawLossCurve, drawNetwork } from '../train/visuals.js';
 import type { TrainMessage, TrainRequest } from '../train/worker.js';
-import { TRACKS, geometry, getTrack } from '../tracks.js';
+import { TRACKS, ensureCourse, geometry, getCourse, listTwists, type Course } from '../tracks.js';
+import type { EngineConfig } from '../../../engine/reindeer/config.js';
 import { download, fmtDate, fmtTime, h, toast, type Screen } from '../ui.js';
 
-const RAYS = DEFAULT_CONFIG.rayAnglesDeg.map((_, i) => `ray${i}`);
 const RAY_LABEL = ['far left', 'left', 'ahead-left', 'ahead', 'ahead-right', 'right', 'far right'];
+
+/** Words for each distance sensor: the usual 7, or angles on a twist with other rays (e.g. night mode). */
+function rayLabels(cfg: EngineConfig): string[] {
+  const a = cfg.rayAnglesDeg;
+  if (a.length === 7 && a.every((d, i) => d === DEFAULT_CONFIG.rayAnglesDeg[i])) return RAY_LABEL;
+  return a.map((d) => (d === 0 ? 'ahead' : `${d < 0 ? 'left' : 'right'} ${Math.abs(d)}°`));
+}
 const NEURONS = [4, 8, 16, 32, 64];
 
 interface Settings {
@@ -35,7 +42,9 @@ interface Settings {
   mirror: boolean;
 }
 
-const RECOMMENDED: Settings = { inputs: [...RAYS, 'speed'], layers: 2, neurons: 32, activation: 'relu', epochs: 40, learningRate: 0.003, mirror: false };
+function recommended(rays: string[]): Settings {
+  return { inputs: [...rays, 'speed'], layers: 2, neurons: 32, activation: 'relu', epochs: 40, learningRate: 0.003, mirror: false };
+}
 
 const CAPTIONS = [
   'The network looks at what the sensors saw at each moment of your laps…',
@@ -47,7 +56,13 @@ const CAPTIONS = [
 ];
 
 export function trainScreen(trackParam?: string): Screen {
-  const track = getTrack(trackParam ?? '') ?? TRACKS[0];
+  const course: Course = getCourse(trackParam ?? '') ?? getCourse(TRACKS[0].id)!;
+  const track = course.track;
+  const cfg = course.cfg;
+  const RAYS = cfg.rayAnglesDeg.map((_, i) => `ray${i}`);
+  const labels = rayLabels(cfg);
+  const RECOMMENDED = recommended(RAYS);
+  const shortName = (n: string) => (n.startsWith('ray') ? labels[Number(n.slice(3))] : n.startsWith('surf_') ? n.slice(5) : n);
   let settings: Settings = loadSettings();
   let laps: LapRecord[] = [];
   let worker: Worker | null = null;
@@ -61,6 +76,9 @@ export function trainScreen(trackParam?: string): Screen {
   // ---------- step 1: data ----------
   const trackSel = h('select', { id: 'train-track', onchange: (e: Event) => (location.hash = `#/train/${(e.target as HTMLSelectElement).value}`) },
     TRACKS.map((t) => h('option', { value: t.id, selected: t.id === track.id }, t.name)));
+  listTwists().then((tw) => {
+    for (const w of tw) trackSel.append(h('option', { value: w.id, selected: w.id === course.id }, `🌀 ${w.name}${w.live ? '' : ' (ended)'}`));
+  });
   const allTracksCb = h('input', { type: 'checkbox', id: 'all-tracks' });
   const dataSummary = h('div', { class: 'data-summary' });
   const lapList = h('div', { class: 'lap-pick' });
@@ -68,7 +86,7 @@ export function trainScreen(trackParam?: string): Screen {
   // ---------- step 2: sensors ----------
   const fan = h('canvas', { class: 'fan', width: '220', height: '120', 'aria-hidden': 'true' });
   const sensorBoxes = [...RAYS, 'speed', 'lateral', 'surface'].map((name) => {
-    const label = name.startsWith('ray') ? `Distance ${RAY_LABEL[Number(name.slice(3))]}` : name === 'speed' ? 'Speed' : name === 'lateral' ? 'Sideways slide' : 'Surface (snow / ice / rough)';
+    const label = name.startsWith('ray') ? `Distance ${labels[Number(name.slice(3))]}` : name === 'speed' ? 'Speed' : name === 'lateral' ? 'Sideways slide' : 'Surface (snow / ice / rough)';
     const cb = h('input', { type: 'checkbox', 'data-name': name, onchange: () => { readInputs(); refresh(); } });
     return h('label', { class: 'check' }, cb, ` ${label}`);
   });
@@ -169,7 +187,12 @@ export function trainScreen(trackParam?: string): Screen {
   function loadSettings(): Settings {
     try {
       const s = JSON.parse(localStorage.getItem('rgp.trainer') ?? 'null');
-      if (s && Array.isArray(s.inputs)) return { ...RECOMMENDED, ...s };
+      if (s && Array.isArray(s.inputs)) {
+        // Settings from another track may mention sensors this one lacks (e.g. 7 rays at night).
+        const allowed = [...RAYS, 'speed', 'lateral', 'surf_snow', 'surf_ice', 'surf_rough'];
+        const inputs = (s.inputs as string[]).filter((n) => allowed.includes(n));
+        return { ...RECOMMENDED, ...s, inputs: inputs.some((n) => n.startsWith('ray')) ? inputs : [...RAYS, ...inputs.filter((n) => !n.startsWith('ray'))] };
+      }
     } catch {
       /* ignore */
     }
@@ -249,7 +272,7 @@ export function trainScreen(trackParam?: string): Screen {
     ctx.clearRect(0, 0, 220, 120);
     const cx = 110;
     const cy = 108;
-    DEFAULT_CONFIG.rayAnglesDeg.forEach((deg, i) => {
+    cfg.rayAnglesDeg.forEach((deg, i) => {
       const on = settings.inputs.includes(`ray${i}`);
       const a = (deg - 90) * (Math.PI / 180);
       ctx.strokeStyle = on ? '#1f8a5b' : '#c9d3de';
@@ -267,6 +290,9 @@ export function trainScreen(trackParam?: string): Screen {
 
   async function loadLaps(): Promise<void> {
     laps = (await listLaps()).filter((l) => l.kind === 'human');
+    for (const id of new Set(laps.map((l) => l.trackId))) await ensureCourse(id);
+    // Laps on tracks this app can't load (e.g. an old twist) can't be re-simulated.
+    laps = laps.filter((l) => getCourse(l.trackId));
     const here = laps.filter((l) => allTracksCb.checked || l.trackId === track.id);
     if (!here.length) {
       lapList.replaceChildren(h('p', {}, 'No laps on this track yet. ', h('a', { class: 'btn btn-primary', href: `#/drive/${track.id}` }, `Drive ${track.name}`)));
@@ -282,7 +308,7 @@ export function trainScreen(trackParam?: string): Screen {
               refresh();
             } });
             return h('li', {}, h('label', { class: 'check' }, cb,
-              ` ${getTrack(l.trackId)?.name ?? l.trackId} · ${l.result.valid ? `${fmtTime(l.result.score)} s` : 'did not finish'} · ${l.result.collisions} wall hit${l.result.collisions === 1 ? '' : 's'} · ${fmtDate(l.createdAt)}`));
+              ` ${getCourse(l.trackId)?.name ?? l.trackId} · ${l.result.valid ? `${fmtTime(l.result.score)} s` : 'did not finish'} · ${l.result.collisions} wall hit${l.result.collisions === 1 ? '' : 's'} · ${fmtDate(l.createdAt)}`));
           }),
         ),
       );
@@ -309,6 +335,8 @@ export function trainScreen(trackParam?: string): Screen {
     const msg: TrainRequest = {
       type: 'train',
       laps: sel.map((l) => ({ trackId: l.trackId, bytes: l.bytes })),
+      courses: Object.fromEntries([...new Set(sel.map((l) => l.trackId))].map((id) => [id, { track: getCourse(id)!.track, cfg: getCourse(id)!.cfg }])),
+      sensors: { rayAnglesDeg: cfg.rayAnglesDeg, rayRange: cfg.rayRange },
       inputs: settings.inputs,
       config,
       mirror: settings.mirror && canMirror(settings.inputs, RAYS.length),
@@ -368,12 +396,12 @@ export function trainScreen(trackParam?: string): Screen {
     if (!Number.isFinite(watchSpeed)) watchSpeed = 1;
     const bot = trained.bot;
     const geo = geometry(track);
-    const rep = evaluateBot(track, bot, {}, { geo });
+    const rep = evaluateBot(track, bot, {}, { geo, cfg, twist: course.twist });
     const official = rep.header.result;
     const best = await bestLap(track.id);
     let ghost: Frame[] | null = null;
-    if (best) ghost = simulateReplay(track, await lapReplay(best), { geo, collectFrames: true }).frames;
-    const g = new ReindeerGame(track, DEFAULT_CONFIG, geo);
+    if (best) ghost = simulateReplay(track, await lapReplay(best), { geo, cfg, collectFrames: true }).frames;
+    const g = new ReindeerGame(track, cfg, geo);
     const policy = botPolicy(compileBot(bot));
     const renderer = new Renderer(watchCanvas);
     renderer.setTrack(track);
@@ -410,7 +438,7 @@ export function trainScreen(trackParam?: string): Screen {
       sleighs.push({ x: g.x, y: g.y, heading: g.heading, label: 'Bot' });
       renderer.draw({ x: g.x + Math.cos(g.heading) * 10, y: g.y + Math.sin(g.heading) * 10 }, {
         sleighs,
-        rays: { x: g.x, y: g.y, heading: g.heading, anglesDeg: DEFAULT_CONFIG.rayAnglesDeg, values: o.rays, range: DEFAULT_CONFIG.rayRange },
+        rays: { x: g.x, y: g.y, heading: g.heading, anglesDeg: cfg.rayAnglesDeg, values: o.rays, range: cfg.rayRange },
       });
       watchStatus.textContent = `${fmtTime(g.tick / 60)} s · wall hits ${g.collisions}`;
       if (!g.isDone()) raf = requestAnimationFrame(step);
@@ -452,7 +480,9 @@ export function trainScreen(trackParam?: string): Screen {
     }
     const btn = h('button', { class: 'btn btn-primary big', onclick: () => submit(btn) }, 'Submit to the leaderboard');
     submitEl.replaceChildren(
-      h('p', {}, `Your bot will race all ${TRACKS.length} practice tracks on the server. Your team can submit 20 bots a day; your best time on each track counts.`),
+      h('p', {}, course.twist
+        ? `Your bot will race ${course.name} and every other track and live twist its sensors fit. Your team can submit 20 bots a day; your best time on each counts.`
+        : `Your bot will race all ${TRACKS.length} practice tracks, plus any live weekly twist its sensors fit. Your team can submit 20 bots a day; your best time on each track counts.`),
       btn,
     );
   }
@@ -468,14 +498,15 @@ export function trainScreen(trackParam?: string): Screen {
       btn.textContent = `Uploading ${used.length} training lap${used.length === 1 ? '' : 's'}…`;
       for (const l of used) await api.upload(`/runs`, l.bytes).catch(() => undefined);
       btn.textContent = 'Submitting…';
-      const r = await api.post<{ submissions: { id: string; trackId: string }[] }>('/submissions', { bot: trained.bot });
+      const r = await api.post<{ submissions: { id: string; trackId: string }[]; skipped?: { trackId: string; reason: string }[] }>('/submissions', { bot: trained.bot });
+      for (const sk of r.skipped ?? []) status.append(h('li', { class: 'muted' }, `${(await ensureCourse(sk.trackId))?.name ?? sk.trackId}: not entered (${sk.reason})`));
       btn.textContent = 'Submitted';
       await Promise.all(
         r.submissions.map(async (s) => {
-          const li = h('li', {}, `${getTrack(s.trackId)?.name}: queued`);
+          const li = h('li', {}, `${getCourse(s.trackId)?.name ?? s.trackId}: queued`);
           status.append(li);
-          const done = await waitForSubmission(s.id, (x) => (li.textContent = `${getTrack(s.trackId)?.name}: ${statusText(x)}`));
-          li.replaceChildren(`${getTrack(s.trackId)?.name}: ${statusText(done)} `,
+          const done = await waitForSubmission(s.id, (x) => (li.textContent = `${getCourse(s.trackId)?.name ?? s.trackId}: ${statusText(x)}`));
+          li.replaceChildren(`${getCourse(s.trackId)?.name ?? s.trackId}: ${statusText(done)} `,
             done.replayId ? h('a', { href: `#/replay/remote/${done.replayId}` }, 'watch') : '', ' ',
             h('a', { href: `#/boards/${s.trackId}/bots` }, 'leaderboard'));
         }),
@@ -507,12 +538,6 @@ export function statusText(s: Submission): string {
   if (s.status === 'rejected') return `rejected: ${s.rejectReason}`;
   if (!s.result?.valid) return 'did not finish';
   return `${fmtTime(s.result.score)} s${s.result.beginner ? ' (Beginner bracket)' : ''}`;
-}
-
-function shortName(n: string): string {
-  if (n.startsWith('ray')) return RAY_LABEL[Number(n.slice(3))];
-  if (n.startsWith('surf_')) return n.slice(5);
-  return n;
 }
 
 function slug(s: string): string {

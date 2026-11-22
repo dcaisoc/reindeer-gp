@@ -8,9 +8,18 @@ import { Recorder } from '../../engine/reindeer/run.js';
 import type { TrackDef } from '../../engine/reindeer/track.js';
 import type { Replay } from '../../engine/core/replay.js';
 import { mulberry32 } from '../../engine/core/quant.js';
+import { DEFAULT_CONFIG } from '../../engine/reindeer/config.js';
+import { twistConfig, twistRef, type TwistDef } from '../../engine/reindeer/twist.js';
 
-export function keyboardLap(track: TrackDef, seed = 1, sloppiness = 0): Replay {
-  const rec = new Recorder(track, 1, { kind: 'human', name: 'Sim' });
+/**
+ * On a twist, pass it: the simulated human sees the road with the standard 7
+ * rays (like a person would), while physics uses the twist's config. Rays
+ * never affect physics, so the lap verifies under the twist's own config.
+ */
+export function keyboardLap(track: TrackDef, seed = 1, sloppiness = 0, twist?: TwistDef): Replay {
+  const cfg = twist ? { ...twistConfig(twist), rayAnglesDeg: DEFAULT_CONFIG.rayAnglesDeg, rayRange: DEFAULT_CONFIG.rayRange } : DEFAULT_CONFIG;
+  const rec = new Recorder(track, 1, { kind: 'human', name: 'Sim' }, cfg);
+  if (twist) rec.twist = twistRef(twist);
   const rand = mulberry32(seed);
   let steer = 0;
   let left = false;

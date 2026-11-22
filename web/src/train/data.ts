@@ -6,12 +6,15 @@
 import type { Replay } from '../../../engine/core/replay.js';
 import { extractTrainingPairs } from '../../../engine/reindeer/run.js';
 import { obsToInputs } from '../../../engine/reindeer/sim.js';
+import type { EngineConfig } from '../../../engine/reindeer/config.js';
 import type { TrackDef } from '../../../engine/reindeer/track.js';
 import type { Dataset } from './mlp.js';
 
 export interface LapSource {
   track: TrackDef;
   replay: Replay;
+  /** The engine config the lap was driven with (a twist's); default otherwise. */
+  cfg?: EngineConfig;
 }
 
 /** The mirror-image name of an input, or null if it has none among `inputs`. */
@@ -31,8 +34,8 @@ export function buildDataset(laps: LapSource[], inputs: string[], opts: { mirror
   const xs: number[] = [];
   const ys: number[] = [];
   const mirroredIdx = inputs.map((n) => inputs.indexOf(mirrorName(n, rayCount)));
-  for (const { track, replay } of laps) {
-    const { obs, actions } = extractTrainingPairs(track, replay, 3);
+  for (const { track, replay, cfg } of laps) {
+    const { obs, actions } = extractTrainingPairs(track, replay, 3, cfg);
     for (let i = 0; i < obs.length; i++) {
       const row = obsToInputs(obs[i], inputs);
       xs.push(...row);

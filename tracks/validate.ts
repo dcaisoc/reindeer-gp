@@ -4,6 +4,7 @@
  */
 
 import type { Pt, TrackDef } from '../engine/reindeer/track.js';
+import { validateTwistShape } from '../engine/reindeer/twist.js';
 
 const MIN_GAP = 6; // metres: narrowest allowed distance between left and right walls
 
@@ -117,5 +118,13 @@ export function validateTrack(t: TrackDef): string[] {
   else if ([...left, ...right].some((p) => p[0] < b.minX || p[0] > b.maxX || p[1] < b.minY || p[1] > b.maxY)) {
     e.push('Some wall points lie outside bounds.');
   }
+  return e;
+}
+
+/** Full check of a twist file: its fields and config, then its track. */
+export function validateTwist(t: unknown): string[] {
+  const e = validateTwistShape(t);
+  const tr = (t as { track?: TrackDef } | null)?.track;
+  if (tr && typeof tr === 'object') for (const p of validateTrack(tr)) e.push(`track: ${p}`);
   return e;
 }

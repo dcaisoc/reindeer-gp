@@ -32,7 +32,7 @@ Documentation = "https://dcaisoc.github.io/reindeer-gp/"
 include = ["reindeer_sdk*"]
 
 [tool.setuptools.package-data]
-reindeer_sdk = ["data/tracks/*.json", "data/golden/corpus/*.json", "data/golden/bots/*.json", "py.typed"]
+reindeer_sdk = ["data/tracks/*.json", "data/twists/*.json", "data/golden/corpus/*.json", "data/golden/bots/*.json", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

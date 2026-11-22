@@ -6,7 +6,9 @@
  *   #/train[/<trackId>]         train a bot in the browser
  *   #/boards[/<track>/<kind>]   live leaderboards        #/projector/<track>/<kind>  big-screen board
  *   #/replay/lap|baseline|remote|file/<id>               replay viewer
+ *   #/standings                 team and college standings
  *   #/signin  #/team  #/teams/<id>  #/admin
+ * A <trackId> may also be a weekly twist's id.
  */
 
 import { getMe } from './api.js';
@@ -17,7 +19,8 @@ import { lapsScreen } from './screens/laps.js';
 import { replayScreen } from './screens/replay.js';
 import { trainScreen } from './screens/train.js';
 import { signinScreen, teamScreen } from './screens/account.js';
-import { boardsScreen, projectorScreen, publicTeamScreen } from './screens/boards.js';
+import { boardsScreen, projectorScreen, publicTeamScreen, standingsScreen } from './screens/boards.js';
+import { ensureCourse, getCourse } from './tracks.js';
 import { adminScreen } from './screens/admin.js';
 
 const app = document.getElementById('app')!;
@@ -26,10 +29,19 @@ const account = document.getElementById('account')!;
 const announce = document.getElementById('announce')!;
 let current: Screen | null = null;
 
-function route(): void {
+let routeSeq = 0;
+
+async function route(): Promise<void> {
+  const seq = ++routeSeq;
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(query ?? '');
+  // Screens that take a track id may be given a weekly twist: load its track and config first.
+  const courseParam = ['drive', 'laps', 'train', 'boards', 'projector'].includes(parts[0]) ? parts[1] : parts[0] === 'replay' && parts[1] === 'baseline' ? parts[2] : undefined;
+  if (courseParam && !getCourse(courseParam)) {
+    await ensureCourse(courseParam);
+    if (seq !== routeSeq) return;
+  }
   current?.dispose?.();
   app.replaceChildren();
   let screen: Screen;
@@ -44,6 +56,7 @@ function route(): void {
       case 'signin': screen = signinScreen(params); break;
       case 'team': screen = teamScreen(); break;
       case 'teams': screen = publicTeamScreen(parts[1]); break;
+      case 'standings': screen = standingsScreen(); break;
       case 'admin': screen = adminScreen(); break;
       default: screen = homeScreen();
     }
@@ -92,9 +105,9 @@ async function renderAnnouncements(): Promise<void> {
   }
 }
 
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => void route());
 window.addEventListener('rgp:me', renderAccount);
-route();
+void route();
 renderAccount();
 renderAnnouncements();
 setInterval(renderAnnouncements, 120_000);

@@ -12,6 +12,9 @@ import * as replays from './replays.js';
 import * as subs from './submissions.js';
 import * as teams from './teams.js';
 import * as tokens from './tokens.js';
+import * as twists from './twists.js';
+import { digest } from './digest.js';
+import { standings } from './standings.js';
 import { processQueue } from './evaluate.js';
 import { kickEvaluator } from './submissions.js';
 
@@ -47,7 +50,11 @@ function routes(env: Env, ctx?: Ctx): Router {
     .on('GET', '/api/v1/submissions/:id', (req, p) => subs.getSubmission(env, req, p.id))
     .on('POST', '/api/v1/runs', (req) => subs.uploadRun(env, req))
     .on('GET', '/api/v1/runs/count', (req) => subs.runCount(env, req))
+    .on('GET', '/api/v1/twists', () => twists.listTwists(env))
+    .on('GET', '/api/v1/twists/:id', (req, p) => twists.getTwist(env, req, p.id))
     .on('GET', '/api/v1/boards', () => listBoards(env))
+    .on('GET', '/api/v1/standings', () => standings(env))
+    .on('GET', '/api/v1/digest.md', (req) => digest(env, req))
     .on('GET', '/api/v1/boards/*', (req, p) => getBoard(env, req, p['*'], ctx))
     .on('GET', '/api/v1/replays/:id', (req, p) => replays.replayMeta(env, req, p.id))
     .on('PATCH', '/api/v1/replays/:id', (req, p) => replays.setVisibility(env, req, p.id))
@@ -62,6 +69,11 @@ function routes(env: Env, ctx?: Ctx): Router {
     .on('POST', '/api/v1/admin/announcements', (req) => admin.postAnnouncement(env, req))
     .on('DELETE', '/api/v1/admin/announcements/:id', (req, p) => admin.removeAnnouncement(env, req, p.id))
     .on('GET', '/api/v1/admin/export.csv', (req) => admin.exportCsv(env, req))
+    .on('GET', '/api/v1/admin/twists', (req) => twists.adminListTwists(env, req))
+    .on('POST', '/api/v1/admin/twists', (req) => twists.uploadTwist(env, req))
+    .on('PATCH', '/api/v1/admin/twists/:id', (req, p) => twists.scheduleTwist(env, req, p.id))
+    .on('DELETE', '/api/v1/admin/twists/:id', (req, p) => twists.deleteTwist(env, req, p.id))
+    .on('POST', '/api/v1/admin/twists/:id/dry-run', (req, p) => twists.startDryRun(env, req, p.id))
     .on('GET', '/replay/:id', (req, p) => replays.permalinkPage(env, req, p.id));
   return r;
 }
@@ -88,10 +100,17 @@ export default {
     return handle(req, env, ctx);
   },
 
-  /** Cron triggers (see wrangler.toml): daily rank snapshot, and a queue safety net. */
+  /**
+   * Cron triggers (see wrangler.toml): the daily rank snapshot; and every 10
+   * minutes, announce any twist that went live with nobody watching, and wake
+   * the queue (it also fills in missing baselines).
+   */
   async scheduled(event: { cron: string }, env: Env): Promise<void> {
     if (event.cron === '5 0 * * *') await snapshotRanks(env);
-    else await kickEvaluator(env);
+    else {
+      await twists.activateDueTwists(env);
+      await kickEvaluator(env);
+    }
   },
 };
 

@@ -42,6 +42,7 @@ nav:
       - Bot file format: formats/bot.md
       - Replay file format: formats/replay.md
       - Track file format: formats/track.md
+      - Twist file format: formats/twist.md
       - HTTP API: api.md
   - Organisers:
       - Going live: setup.md

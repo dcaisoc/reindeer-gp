@@ -4,7 +4,7 @@ import { currentUser, requireTeam } from './auth.js';
 import { blobs } from './blobs.js';
 import type { Env } from './env.js';
 import { HttpError, bad, json, notFound, readBody, readJson } from './http.js';
-import { track } from './tracks.js';
+import { courseName } from './twists.js';
 
 interface ReplayRow {
   id: string;
@@ -33,7 +33,7 @@ export async function replayMeta(env: Env, req: Request, id: string): Promise<Re
   const { r, canEdit } = await load(env, req, id);
   return json({
     replay: {
-      id: r.id, kind: r.kind, trackId: r.track_id, trackName: track(r.track_id)?.name ?? r.track_id,
+      id: r.id, kind: r.kind, trackId: r.track_id, trackName: await courseName(env, r.track_id),
       title: r.title, score: r.score, teamId: r.team_id, team: r.team_name, visibility: r.visibility,
       createdAt: r.created_at, hasThumbnail: !!r.thumb_key, canEdit,
     },
@@ -100,7 +100,8 @@ export async function permalinkPage(env: Env, req: Request, id: string): Promise
   try {
     const { r } = await load(env, req, id);
     title = r.title;
-    desc = r.score !== null ? `${r.score.toFixed(2)} s on ${track(r.track_id)?.name ?? r.track_id}. Watch it, then race it as a ghost.` : `A run on ${track(r.track_id)?.name ?? r.track_id}.`;
+    const name = await courseName(env, r.track_id);
+    desc = r.score !== null ? `${r.score.toFixed(2)} s on ${name}. Watch it, then race it as a ghost.` : `A run on ${name}.`;
     if (r.thumb_key) image = `${origin}/api/v1/replays/${encodeURIComponent(id)}/thumb.png`;
   } catch {
     /* fall through with generic text; the app shows "not found" */

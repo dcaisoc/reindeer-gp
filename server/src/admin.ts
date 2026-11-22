@@ -6,7 +6,8 @@ import { rebuildBoard } from './boards.js';
 import type { Env } from './env.js';
 import { bad, json, notFound, readJson } from './http.js';
 import { LEVELS, checkName } from './names.js';
-import { allBoardKeys, parseBoardKey } from './tracks.js';
+import { parseBoardKey } from './tracks.js';
+import { allBoardKeys } from './twists.js';
 import { newId, nowIso, startOfUkDay } from './util.js';
 
 const EDITABLE_SETTINGS: Record<string, (v: string) => boolean> = {
@@ -82,7 +83,7 @@ export async function editTeam(env: Env, req: Request, id: string): Promise<Resp
   await env.DB.prepare('UPDATE teams SET name = ?, hidden = ?, level = ? WHERE id = ?')
     .bind(b.name?.trim() ?? team.name, b.hidden === undefined ? team.hidden : b.hidden ? 1 : 0, b.level ?? team.level, id)
     .run();
-  for (const key of allBoardKeys()) await rebuildBoard(env, key);
+  for (const key of await allBoardKeys(env)) await rebuildBoard(env, key);
   await audit(env, u.id, 'team.edit', id, { before: team, changes: b });
   return json({ ok: true });
 }

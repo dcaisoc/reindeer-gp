@@ -17,14 +17,15 @@ from .run import Recorder, extract_training_pairs, run_policy, simulate_replay
 from .sim import Observation, ReindeerGame, TrackGeometry
 from .render import render_replay
 from .tracks import TRACK_IDS, list_tracks, load_track
+from .twist import Course, bundled_twist_ids, course, load_twist, twist_config
 from .vec_env import VecSleighEnv
 
 __version__ = "0.3.0"
 
 __all__ = [
-    "CompiledBot", "DEFAULT_CONFIG", "ENGINE_VERSION", "InvalidBot", "Observation", "Recorder", "ReindeerGame", "Replay",
-    "TRACK_IDS", "TrackGeometry", "VecSleighEnv", "baseline_policy", "bot_from_layers", "can_mirror", "count_params", "decode_replay",
+    "CompiledBot", "Course", "DEFAULT_CONFIG", "ENGINE_VERSION", "InvalidBot", "Observation", "Recorder", "ReindeerGame", "Replay",
+    "TRACK_IDS", "TrackGeometry", "VecSleighEnv", "baseline_policy", "bot_from_layers", "bundled_twist_ids", "can_mirror", "course", "count_params", "decode_replay",
     "encode_replay", "evaluate_bot", "extract_training_pairs", "from_torch", "input_names", "is_trainer_architecture",
-    "laps_to_arrays", "list_tracks", "load_bot", "load_laps", "load_replay", "load_track", "make_config", "render_replay", "run_policy",
-    "save_bot", "simulate_replay", "tuned_policy", "validate_bot", "__version__",
+    "laps_to_arrays", "list_tracks", "load_bot", "load_laps", "load_replay", "load_track", "load_twist", "make_config", "render_replay", "run_policy",
+    "save_bot", "simulate_replay", "tuned_policy", "twist_config", "validate_bot", "__version__",
 ]

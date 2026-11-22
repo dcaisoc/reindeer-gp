@@ -6,6 +6,7 @@
 
 import type { Env } from './env.js';
 import { processQueue } from './evaluate.js';
+import { evaluatorRequest } from './heavy.js';
 
 interface DurableObjectStateLike {
   storage: {
@@ -20,8 +21,10 @@ export class Evaluator {
     private env: Env,
   ) {}
 
-  /** Any request just makes sure an alarm is due soon. */
-  async fetch(_req: Request): Promise<Response> {
+  /** Heavy checks are answered directly; any other request just makes sure an alarm is due soon. */
+  async fetch(req: Request): Promise<Response> {
+    const direct = await evaluatorRequest(this.env, req);
+    if (direct) return direct;
     if ((await this.state.storage.getAlarm()) === null) await this.state.storage.setAlarm(Date.now());
     return new Response('ok');
   }

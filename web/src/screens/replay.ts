@@ -6,14 +6,14 @@
  */
 
 import { decodeReplay, type Replay } from '../../../engine/core/replay.js';
-import { DEFAULT_CONFIG, ENGINE_VERSION } from '../../../engine/reindeer/config.js';
+import { ENGINE_VERSION, type EngineConfig } from '../../../engine/reindeer/config.js';
 import { runPolicy, simulateReplay, type Frame } from '../../../engine/reindeer/run.js';
 import { baselinePolicy } from '../../../engine/reindeer/autopilot.js';
 import { fcos, fsin } from '../../../engine/core/fmath.js';
 import type { TrackDef } from '../../../engine/reindeer/track.js';
 import { Renderer, type SleighDraw } from '../render.js';
 import { getLap, lapReplay, listLaps, type LapRecord } from '../store.js';
-import { geometry, getTrack, sectorTimes } from '../tracks.js';
+import { ensureCourse, ensureCourseForReplay, geometry, sectorTimes } from '../tracks.js';
 import { download, fmtDate, fmtDelta, fmtTime, h, toast, type Screen } from '../ui.js';
 import { api } from '../api.js';
 
@@ -23,6 +23,8 @@ const SPEEDS = [0.25, 0.5, 1, 2, 4];
 interface Loaded {
   title: string;
   track: TrackDef;
+  /** Engine config of the course (a twist's, or the default). */
+  cfg: EngineConfig;
   replay: Replay;
   bytes: Uint8Array | null;
   lapId?: string;
@@ -84,25 +86,26 @@ async function load(kind?: string, id?: string): Promise<Loaded> {
   if (kind === 'lap' && id) {
     const lap = await getLap(id);
     if (!lap) throw new Error('That lap is not saved in this browser.');
-    const track = getTrack(lap.trackId);
-    if (!track) throw new Error(`Unknown track "${lap.trackId}".`);
-    return { title: `${lap.name === 'You' ? 'Your' : `${lap.name}'s`} lap · ${fmtDate(lap.createdAt)}`, track, replay: await lapReplay(lap), bytes: lap.bytes, lapId: lap.id };
+    const c = await ensureCourse(lap.trackId);
+    if (!c) throw new Error(`Unknown track "${lap.trackId}".`);
+    return { title: `${lap.name === 'You' ? 'Your' : `${lap.name}'s`} lap · ${fmtDate(lap.createdAt)}`, track: c.track, cfg: c.cfg, replay: await lapReplay(lap), bytes: lap.bytes, lapId: lap.id };
   }
   if (kind === 'baseline' && id) {
-    const track = getTrack(id);
-    if (!track) throw new Error(`Unknown track "${id}".`);
-    const replay = runPolicy(track, baselinePolicy, { kind: 'bot', name: 'Baseline bot' }, { geo: geometry(track) });
-    return { title: 'Baseline bot', track, replay, bytes: null };
+    const c = await ensureCourse(id);
+    if (!c) throw new Error(`Unknown track "${id}".`);
+    const replay = runPolicy(c.track, baselinePolicy, { kind: 'bot', name: 'Baseline bot' }, { geo: geometry(c.track), cfg: c.cfg, twist: c.twist });
+    return { title: c.twist ? `Baseline bot · ${c.name}` : 'Baseline bot', track: c.track, cfg: c.cfg, replay, bytes: null };
   }
   if (kind === 'remote' && id) {
     const { replay: meta } = await api.get<{ replay: RemoteMeta }>(`/replays/${encodeURIComponent(id)}`);
     const res = await fetch(`/api/v1/replays/${encodeURIComponent(id)}/file`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error('Could not download that replay.');
     const bytes = new Uint8Array(await res.arrayBuffer());
-    const track = getTrack(meta.trackId);
-    if (!track) throw new Error(`Unknown track "${meta.trackId}".`);
+    const replay = await decodeReplay(bytes);
+    const c = await ensureCourseForReplay(replay.header);
+    if (!c) throw new Error(`Unknown track "${meta.trackId}".`);
     return {
-      title: meta.title, track, replay: await decodeReplay(bytes), bytes,
+      title: meta.title, track: c.track, cfg: c.cfg, replay, bytes,
       remote: { id: meta.id, canEdit: meta.canEdit, visibility: meta.visibility, hasThumbnail: meta.hasThumbnail },
     };
   }
@@ -114,9 +117,9 @@ async function openFile(file: File): Promise<void> {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const replay = await decodeReplay(bytes);
-    const track = getTrack(replay.header.track.id);
-    if (!track) throw new Error(`This replay is for track "${replay.header.track.id}", which this app does not have.`);
-    fileReplay = { title: `${replay.header.participants[0]?.name ?? 'Replay'} · ${file.name}`, track, replay, bytes };
+    const c = await ensureCourseForReplay(replay.header);
+    if (!c) throw new Error(`This replay is for "${replay.header.twist?.id ?? replay.header.track.id}", which this app does not have (a twist that isn't live yet?).`);
+    fileReplay = { title: `${replay.header.participants[0]?.name ?? 'Replay'} · ${file.name}`, track: c.track, cfg: c.cfg, replay, bytes };
     if (location.hash === '#/replay/file') window.dispatchEvent(new HashChangeEvent('hashchange'));
     else location.hash = '#/replay/file';
   } catch (e) {
@@ -132,8 +135,8 @@ function fileButton(): HTMLElement {
   return h('span', {}, h('button', { class: 'btn', onclick: () => input.click() }, 'Load replay file…'), input);
 }
 
-function simulate(track: TrackDef, replay: Replay): Sim {
-  const out = simulateReplay(track, replay, { geo: geometry(track), collectFrames: true });
+function simulate(track: TrackDef, replay: Replay, cfg: EngineConfig): Sim {
+  const out = simulateReplay(track, replay, { geo: geometry(track), cfg, collectFrames: true });
   return {
     frames: out.frames!,
     splits: out.game.events.splits,
@@ -146,8 +149,8 @@ function simulate(track: TrackDef, replay: Replay): Sim {
 function viewer(main: Loaded): Screen {
   const { track } = main;
   const geo = geometry(track);
-  const cfg = DEFAULT_CONFIG;
-  const primary = simulate(track, main.replay);
+  const cfg = main.cfg;
+  const primary = simulate(track, main.replay, cfg);
   const last = primary.frames.length - 1;
   const ghosts: { lap: LapRecord; sim: Sim; colour: string }[] = [];
 
@@ -349,7 +352,7 @@ function viewer(main: Loaded): Screen {
             }
             const used = new Set(ghosts.map((g) => g.colour));
             const colour = GHOST_COLOURS.find((c) => !used.has(c))!;
-            ghosts.push({ lap, sim: simulate(track, await lapReplay(lap)), colour });
+            ghosts.push({ lap, sim: simulate(track, await lapReplay(lap), cfg), colour });
           } else {
             const i = ghosts.findIndex((g) => g.lap.id === lap.id);
             if (i >= 0) ghosts.splice(i, 1);

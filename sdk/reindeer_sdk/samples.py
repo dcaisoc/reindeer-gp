@@ -11,12 +11,17 @@ from .autopilot import tuned_policy
 from .quant import mulberry32
 from .replay import Replay
 from .run import Recorder
-from .tracks import load_track
+from .config import DEFAULT_CONFIG
+from .twist import course
 
 
 def sample_lap(track_id: str = "practice-1", seed: int = 1, sloppiness: float = 0.15) -> Replay:
-    track = load_track(track_id)
-    rec = Recorder(track, 1, {"kind": "human", "name": f"Sample driver {seed}"})
+    """One lap on a track or twist. The simulated driver sees the whole road like a human
+    (the standard 7 rays), whatever sensors the twist gives bots; rays never affect physics."""
+    c = course(track_id)
+    driver_cfg = {**c.cfg, "rayAnglesDeg": DEFAULT_CONFIG["rayAnglesDeg"], "rayRange": DEFAULT_CONFIG["rayRange"]}
+    rec = Recorder(c.track, 1, {"kind": "human", "name": f"Sample driver {seed}"}, driver_cfg)
+    rec.twist = c.twist
     rand = mulberry32(seed)
     steer = 0
     left = right = up = down = False

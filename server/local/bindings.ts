@@ -9,6 +9,7 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { evaluatorRequest } from '../src/heavy.js';
 import type { D1Like, D1Statement, Env, EvaluatorNamespace, R2Like, R2ObjectLike } from '../src/env.js';
 import { processQueue } from '../src/evaluate.js';
 
@@ -121,7 +122,9 @@ export class LocalEvaluator implements EvaluatorNamespace {
   }
   get() {
     return {
-      fetch: async () => {
+      fetch: async (input: string, init?: RequestInit) => {
+        const direct = await evaluatorRequest(this.env, new Request(input, init));
+        if (direct) return direct;
         this.wake();
         return new Response('ok');
       },
