@@ -41,6 +41,8 @@ jobs:
         run: npm run tracks && git diff --exit-code tracks/
       - name: Build web app
         run: npm run build
+      - name: Worker bundles with Cloudflare's own tooling
+        run: npm run worker:check
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist
@@ -65,8 +67,10 @@ jobs:
       - name: Golden traces in Chromium and Firefox
         run: npx tsx tests/browser/golden.browser.ts chromium firefox
       - run: npm run build
-      - name: End-to-end (Chromium)
+      - name: End-to-end M1 (Chromium)
         run: npx tsx tests/browser/m1.e2e.ts --shots e2e-shots
+      - name: End-to-end M2 (Chromium, full server in Node)
+        run: npx tsx tests/browser/m2.e2e.ts --shots e2e-shots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

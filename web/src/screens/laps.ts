@@ -9,6 +9,7 @@ import { ENGINE_VERSION } from '../../../engine/reindeer/config.js';
 import { bestLap, deleteLap, listLaps, newId, qualityHint, saveLap, updateLap, defaultUseForTraining, type LapRecord } from '../store.js';
 import { TRACKS, geometry, getTrack } from '../tracks.js';
 import { download, fmtDate, fmtTime, h, toast, type Screen } from '../ui.js';
+import { submitHumanLap } from './drive.js';
 
 export function lapsScreen(initialTrack?: string): Screen {
   let filter = initialTrack && getTrack(initialTrack) ? initialTrack : 'all';
@@ -101,6 +102,7 @@ export function lapsScreen(initialTrack?: string): Screen {
         h('td', { class: 'hint-cell' }, hint ?? ''),
         h('td', {}, h('div', { class: 'row-actions' },
           h('a', { class: 'btn small', href: `#/replay/lap/${lap.id}` }, 'Watch'),
+          lap.kind === 'human' && lap.result.valid ? h('button', { class: 'btn small', onclick: (e: Event) => submitHumanLap(lap, e.currentTarget as HTMLButtonElement) }, 'Submit to Human board') : null,
           h('button', { class: 'btn small', onclick: () => download(lap.bytes, `${lap.trackId}-${lap.id}.rgpr`) }, 'Download'),
           h('button', { class: 'btn small danger', onclick: async () => {
             if (!confirmDelete(lap)) return;

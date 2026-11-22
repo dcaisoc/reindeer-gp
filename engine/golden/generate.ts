@@ -12,6 +12,10 @@ import { replayToJson, type Replay } from '../core/replay.js';
 import { baselinePolicy, tunedPolicy } from '../reindeer/autopilot.js';
 import { Recorder, runPolicy } from '../reindeer/run.js';
 import type { TrackDef } from '../reindeer/track.js';
+import { evaluateBot } from '../reindeer/bot-policy.js';
+import { buildDataset } from '../../web/src/train/data.js';
+import { Trainer } from '../../web/src/train/mlp.js';
+import { keyboardLap } from '../../tests/helpers/keyboard-driver.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, 'corpus');
@@ -58,4 +62,24 @@ for (const [name, r] of cases) {
   writeFileSync(join(out, `${name}.json`), JSON.stringify(replayToJson(fixed(r))) + '\n');
   const res = r.header.result;
   console.log(`${name.padEnd(28)} ticks ${String(res.ticks).padStart(5)}  valid ${res.valid}  hash ${r.header.finalHash}`);
+}
+
+// Golden bots: trained once from simulated keyboard laps, then frozen. Their
+// evaluations pin down deterministic inference (dot products, tanh, relu).
+const botsDir = join(here, 'bots');
+mkdirSync(botsDir, { recursive: true });
+const INPUTS = ['ray0', 'ray1', 'ray2', 'ray3', 'ray4', 'ray5', 'ray6', 'speed', 'lateral', 'surf_snow', 'surf_ice', 'surf_rough'];
+for (const [id, act] of [['practice-1', 'relu'], ['practice-3', 'tanh']] as const) {
+  const t: TrackDef = JSON.parse(readFileSync(join(here, '..', '..', 'tracks', `${id}.json`), 'utf8'));
+  const laps = [1, 2, 3].map((s) => ({ track: t, replay: keyboardLap(t, s, 0.15) }));
+  const ds = buildDataset(laps, INPUTS);
+  const tr = new Trainer(INPUTS, { hidden: [24, 24], activation: act, epochs: 25, learningRate: 0.003, batchSize: 64, seed: 3, validation: 0 });
+  const { train } = tr.split(ds);
+  for (let e = 0; e < 25; e++) tr.epoch(ds, train);
+  const bot = tr.toBotFile({ name: `golden-${id}-${act}`, method: 'imitation', trainer: 'golden' });
+  const rep = evaluateBot(t, bot);
+  const name = `bot-${id}-${act}`;
+  writeFileSync(join(botsDir, `${name}.json`), JSON.stringify({ bot, track: id, hashes: rep.header.hashes, finalHash: rep.header.finalHash }) + '\n');
+  const res = rep.header.result;
+  console.log(`${name.padEnd(28)} ticks ${String(res.ticks).padStart(5)}  valid ${res.valid}  hash ${rep.header.finalHash}`);
 }
