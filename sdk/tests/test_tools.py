@@ -105,3 +105,13 @@ def test_cli(tmp_path, capsys):
     bad = tmp_path / "bad.json"
     bad.write_text("{}")
     assert main(["validate", str(bad)]) == 1
+
+
+def test_sample_laps_are_deterministic_and_finish():
+    from reindeer_sdk.samples import sample_laps
+    a = sample_laps("practice-1", 2)
+    b = sample_laps("practice-1", 2)
+    assert [l.result for l in a] == [l.result for l in b]
+    assert all(l.result["valid"] for l in a)
+    X, Y = laps_to_arrays(a, ["ray3", "speed"])
+    assert len(X) == len(Y) > 100
