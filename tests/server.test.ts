@@ -301,3 +301,10 @@ test('replay privacy and account deletion keep the board but drop personal data'
   assert.equal(board.entries.length, 1, 'leaderboard history stays');
   assert.match(board.entries[0].team, /^Deleted team /, 'an empty team is anonymised');
 });
+
+test('randomInt is unbiased and in range', async () => {
+  const { randomInt } = await import('../server/src/names.js');
+  const counts = new Array(31).fill(0);
+  for (let i = 0; i < 31000; i++) counts[randomInt(31)]++;
+  assert.ok(counts.every((c) => c > 800 && c < 1200), counts.join(','));
+});

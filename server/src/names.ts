@@ -53,14 +53,22 @@ export function checkName(name: unknown, what: string, max = 32): string | null 
 const ADJ = ['Swift', 'Frosty', 'Jolly', 'Sparkly', 'Brave', 'Cosy', 'Merry', 'Snowy', 'Twinkly', 'Nimble', 'Rosy', 'Silver'];
 const NOUN = ['Reindeer', 'Snowfox', 'Penguin', 'Robin', 'Elf', 'Owl', 'Hare', 'Sledder', 'Snowflake', 'Pudding', 'Bauble', 'Comet'];
 
+/** Uniform random integer in [0, n) without modulo bias (rejection sampling). */
+export function randomInt(n: number): number {
+  const limit = Math.floor(0x100000000 / n) * n;
+  const buf = new Uint32Array(1);
+  for (;;) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < limit) return buf[0] % n;
+  }
+}
+
 export function randomDisplayName(): string {
-  const r = crypto.getRandomValues(new Uint8Array(3));
-  return `${ADJ[r[0] % ADJ.length]} ${NOUN[r[1] % NOUN.length]} ${10 + (r[2] % 90)}`;
+  return `${ADJ[randomInt(ADJ.length)]} ${NOUN[randomInt(NOUN.length)]} ${10 + randomInt(90)}`;
 }
 
 /** Join codes avoid look-alike characters (no 0/O, 1/I/L). */
 export function joinCode(): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  const r = crypto.getRandomValues(new Uint8Array(6));
-  return Array.from(r, (b) => alphabet[b % alphabet.length]).join('');
+  return Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join('');
 }
