@@ -32,7 +32,7 @@ jobs:
       - name: Check for Cloudflare credentials
         if: env.CF_TOKEN == ''
         run: echo "::notice::CLOUDFLARE_API_TOKEN is not set yet, so nothing was deployed. See docs/setup.md."
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.CF_TOKEN != ''
       - uses: actions/setup-node@v4
         if: env.CF_TOKEN != ''
